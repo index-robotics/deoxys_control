@@ -1,0 +1,18 @@
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "deoxys"
+version = "0.1.0"
+description = "Deoxys: real-time control framework for Franka Emika Panda at UT-Austin RPL"
+readme = "README.md"
+requires-python = ">=3"
+dynamic = ["dependencies"]
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
+
+[tool.setuptools.packages.find]
+include = ["deoxys*"]

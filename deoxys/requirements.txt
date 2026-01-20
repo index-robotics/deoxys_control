@@ -9,5 +9,5 @@ glfw
 numba
 termcolor
 simplejson
-mujoco==3.1.0
+mujoco>=3.1.0
 
