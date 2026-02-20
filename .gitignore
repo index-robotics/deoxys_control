@@ -16,4 +16,3 @@ deoxys/logs
 *egg-info
 __pycache__
 data_collection_example
-*_pb2.py
