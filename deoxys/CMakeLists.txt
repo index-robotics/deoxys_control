@@ -27,7 +27,6 @@ message("${_GLIBCXX_USE_CXX11_ABI}")
 find_package(Protobuf REQUIRED)
 
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/protobuf.cmake)
-include(${CMAKE_CURRENT_LIST_DIR}/libfranka/cmake/FindEigen3.cmake)
 
 # cmake-format: off
 #  ____            _        _            __
@@ -52,7 +51,8 @@ message("FRANKA ${BUILD_FRANKA}")
 message("DEOXYS ${BUILD_DEOXYS}")
 
 if (BUILD_FRANKA)
-  message("${PROTO_NAMESPACE}")  
+  include(${CMAKE_CURRENT_LIST_DIR}/libfranka/cmake/FindEigen3.cmake)
+  message("${PROTO_NAMESPACE}")
   add_proto_cc_library(shared_protobuf
     NAMESPACE ${PROTO_NAMESPACE}
     PROTO_FILES ${FRANKA_PROTO_FILES}
