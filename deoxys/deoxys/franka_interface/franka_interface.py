@@ -1,6 +1,7 @@
 import logging
 import threading
 import time
+from collections import deque
 from multiprocessing import Process
 from typing import Tuple, Type, Union
 
@@ -113,11 +114,9 @@ class FrankaInterface:
         self._gripper_subscriber.setsockopt_string(zmq.SUBSCRIBE, "")
         self._gripper_subscriber.connect(f"tcp://{self._ip}:{self._gripper_sub_port}")
 
-        self._state_buffer = []
-        self._state_buffer_idx = 0
-
-        self._gripper_state_buffer = []
-        self._gripper_buffer_idx = 0
+        self._state_buffer = deque(maxlen=100)
+        self._gripper_state_buffer = deque(maxlen=100)
+        self._last_state_time = None
 
         # control frequency
         self._control_freq = control_freq
@@ -177,6 +176,7 @@ class FrankaInterface:
                 message = self._subscriber.recv(**recv_kwargs)
                 franka_robot_state.ParseFromString(message)
                 self._state_buffer.append(franka_robot_state)
+                self._last_state_time = time.monotonic()
             except:
                 pass
 
@@ -573,11 +573,9 @@ class FrankaInterface:
 
     def reset(self):
         """Reset internal states of FrankaInterface and clear buffers. Useful when you run multiple episodes in a single python interpretor process."""
-        self._state_buffer = []
-        self._state_buffer_idx = 0
-
-        self._gripper_state_buffer = []
-        self._gripper_buffer_idx = 0
+        self._state_buffer = deque(maxlen=100)
+        self._gripper_state_buffer = deque(maxlen=100)
+        self._last_state_time = None
 
         self.counter = 0
         self.termination = False
