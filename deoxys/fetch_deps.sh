@@ -5,10 +5,6 @@
 # built into a local prefix (protobuf/_install/) so nothing is installed
 # system-wide beyond apt packages.
 #
-# NOTE: This script does NOT make the CMake build find the local protobuf
-# automatically. Until IND-509 lands (CMake fixes), you still need system
-# protobuf or must set CMAKE_PREFIX_PATH manually for `build_franka=1 make`.
-#
 # libfranka compatibility:
 #   The default version (0.20.5) targets FR3 (Arm3Rv2) with system version
 #   >= 5.9.0. Override via LIBFRANKA_VERSION for other hardware/firmware
@@ -63,6 +59,15 @@ if [ ! -d "libfranka" ]; then
     cd ..
 else
     echo "libfranka/ already exists, skipping."
+fi
+
+# Patch libfranka's SetVersionFromGit.cmake to use CMAKE_CURRENT_SOURCE_DIR
+# instead of CMAKE_SOURCE_DIR, so git describe finds tags when libfranka is
+# built as a subdirectory of deoxys.
+SVFG="libfranka/cmake/SetVersionFromGit.cmake"
+if grep -q 'CMAKE_SOURCE_DIR' "$SVFG" && ! grep -q 'CMAKE_CURRENT_SOURCE_DIR' "$SVFG"; then
+    echo "Patching libfranka SetVersionFromGit.cmake..."
+    sed -i 's/CMAKE_SOURCE_DIR/CMAKE_CURRENT_SOURCE_DIR/g' "$SVFG"
 fi
 
 # ── zmqpp ────────────────────────────────────────────────────────────────────

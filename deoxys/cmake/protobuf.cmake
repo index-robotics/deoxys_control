@@ -38,8 +38,15 @@
 # first find the protoc executable
 find_program(PROTOC_EXE
              NAMES protoc
+             PATHS "${CMAKE_CURRENT_SOURCE_DIR}/protobuf/_install/bin"
              DOC "The Google Protocol Buffers Compiler"
-             PATHS "${CONAN_BIN_DIRS_PROTOBUF}")
+             NO_DEFAULT_PATH)
+if(NOT PROTOC_EXE)
+  find_program(PROTOC_EXE
+               NAMES protoc
+               DOC "The Google Protocol Buffers Compiler"
+               PATHS "${CONAN_BIN_DIRS_PROTOBUF}")
+endif()
 mark_as_advanced(PROTOC_EXECUTABLE)
 
 if(PROTOC_EXE)

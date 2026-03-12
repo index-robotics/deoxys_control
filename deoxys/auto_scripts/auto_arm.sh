@@ -1,6 +1,5 @@
 #!/bin/bash
 . $(dirname "$0")/color_variables.sh
-. $(dirname "$0")/fix_ld_issue.sh
 
 printf "${BIRed} Make sure you are in the Performance Mode!!! ${Color_Off} \n"
 
