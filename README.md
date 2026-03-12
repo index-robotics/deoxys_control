@@ -44,7 +44,7 @@ If you use this codebase for your research projects, please cite our codebase ba
 # Installation of codebase
 
 Overall, the installation has three parts:
-1. Install dependencies by running `InstallPackage`
+1. Install dependencies by running `fetch_deps.sh`
 2. Compile desktop-side codebase (Python)
 3. Compile NUC-side codebase (C++)
 
@@ -58,9 +58,11 @@ cd deoxys_control/deoxys
 
 ## Install dependencies
 
-Run the `InstallPackage` file to install necessary packages.
+Run `fetch_deps.sh` to install necessary packages. The script is idempotent
+and can be re-run safely. libfranka defaults to 0.20.5 (FR3 / Arm3Rv2,
+system >= 5.9.0); override with e.g. `LIBFRANKA_VERSION=0.13.3 ./fetch_deps.sh`.
 ``` shell
-./InstallPackage
+./fetch_deps.sh
 ```
 
 
