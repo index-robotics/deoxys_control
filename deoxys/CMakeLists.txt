@@ -1,5 +1,8 @@
-cmake_minimum_required (VERSION 3.10)
-set(CMAKE_INSTALL_RPATH_USE_LINK_PATH FALSE)
+cmake_minimum_required (VERSION 3.12)
+cmake_policy(SET CMP0074 NEW)
+set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+set(CMAKE_INSTALL_RPATH "$ORIGIN/../lib;$ORIGIN/../protobuf/_install/lib")
+set(CMAKE_BUILD_RPATH_USE_ORIGIN TRUE)
 
 project (deoxys
   VERSION 0.1.0
@@ -24,6 +27,8 @@ set(PYTHON_MODULE_OUTPUT_DIRECTORY "${DEFAULT_PYTHON_MODULE_OUTPUT_DIRECTORY}"
 add_compile_options(-Wall -Wextra)
 
 message("${_GLIBCXX_USE_CXX11_ABI}")
+set(Protobuf_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/protobuf/_install")
+set(CMAKE_PREFIX_PATH "${Protobuf_ROOT}" ${CMAKE_PREFIX_PATH})
 find_package(Protobuf REQUIRED)
 
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/protobuf.cmake)
@@ -133,6 +138,7 @@ if (BUILD_FRANKA)
     yaml-example
     spdlog-example
     cartesian-velocity
+    yaml-cpp
     RUNTIME DESTINATION bin
     LIBRARY DESTINATION lib
     )
