@@ -43,8 +43,8 @@ include(${CMAKE_CURRENT_LIST_DIR}/cmake/protobuf.cmake)
 # cmake-format: on
 
 set(FRANKA_PROTO_FILES
-  proto/franka-interface/franka_robot_state.proto
-  proto/franka-interface/franka_controller.proto
+  proto/franka_interface/franka_robot_state.proto
+  proto/franka_interface/franka_controller.proto
   )
 
 set(PROTO_FILES

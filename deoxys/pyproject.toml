@@ -1,18 +1,37 @@
 
 [build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "deoxys"
 version = "0.1.0"
 description = "Deoxys: real-time control framework for Franka Emika Panda at UT-Austin RPL"
-readme = "README.md"
+readme = "../README.md"
 requires-python = ">=3"
-dynamic = ["dependencies"]
+dependencies = [
+    "pyzmq",
+    "PyYAML",
+    "easydict",
+    "google-api-python-client",
+    "pybullet",
+    "numpy",
+    "hidapi",
+    "glfw",
+    "numba",
+    "termcolor",
+    "simplejson",
+    "mujoco>=3.1.0",
+    "protobuf",
+]
 
-[tool.setuptools.dynamic]
-dependencies = {file = ["requirements.txt"]}
+[tool.hatch.build.targets.wheel]
+packages = ["deoxys"]
 
-[tool.setuptools.packages.find]
-include = ["deoxys*"]
+# Regenerate _pb2.py files from .proto sources at install time.
+[tool.hatch.build.hooks.protobuf]
+dependencies = ["hatch-protobuf"]
+proto_paths = ["proto"]
+output_path = "deoxys/proto"
+generate_grpc = false
+generate_pyi = false

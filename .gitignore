@@ -16,3 +16,7 @@ deoxys/logs
 *egg-info
 __pycache__
 data_collection_example
+# Generated protobuf files — rebuilt at install time by hatch build hook
+*_pb2.py
+*_pb2_grpc.py
+*_pb2.pyi
