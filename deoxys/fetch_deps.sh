@@ -50,14 +50,19 @@ else
     echo "All apt packages already installed."
 fi
 
-# ── pinocchio (via robotpkg → /opt/openrobots) ───────────────────────────────
-# libfranka >= 0.14 uses pinocchio for kinematics. It's not in default Ubuntu
-# apt, so install from the official robotpkg repo. Shared, read-only install
-# at /opt/openrobots — no per-user state, does not block other users.
-PINOCCHIO_PC="/opt/openrobots/lib/pkgconfig/pinocchio.pc"
-if [ ! -f "$PINOCCHIO_PC" ]; then
+# ── pinocchio ────────────────────────────────────────────────────────────────
+# libfranka >= 0.14 uses pinocchio for kinematics. Source depends on host arch:
+#   amd64 — robotpkg publishes an up-to-date binary at /opt/openrobots (shared,
+#           read-only install; no per-user state).
+#   arm64 — robotpkg has no arm64 builds, so we use the Ubuntu `libpinocchio-dev`
+#           package from the `universe` component (noble ships 2.7.0, which
+#           satisfies libfranka 0.20). Installs into standard /usr paths.
+DPKG_ARCH="$(dpkg --print-architecture)"
+if pkg-config --exists pinocchio 2>/dev/null; then
+    echo "pinocchio already discoverable via pkg-config, skipping."
+elif [ "$DPKG_ARCH" = "amd64" ]; then
     CODENAME="$(lsb_release -cs)"
-    echo "Installing pinocchio via robotpkg for Ubuntu ${CODENAME}..."
+    echo "Installing pinocchio via robotpkg for Ubuntu ${CODENAME} (amd64)..."
     sudo mkdir -p /etc/apt/keyrings
     curl -fsSL http://robotpkg.openrobots.org/packages/debian/robotpkg.asc \
         | sudo tee /etc/apt/keyrings/robotpkg.asc > /dev/null
@@ -65,14 +70,28 @@ if [ ! -f "$PINOCCHIO_PC" ]; then
         | sudo tee /etc/apt/sources.list.d/robotpkg.list > /dev/null
     sudo apt-get update -qq
     sudo apt-get install -y robotpkg-pinocchio
+    # robotpkg installs under /opt/openrobots, not the default cmake/pkg-config
+    # search paths — export so subsequent cmake invocations find it.
+    export CMAKE_PREFIX_PATH="/opt/openrobots:${CMAKE_PREFIX_PATH:-}"
+    export PKG_CONFIG_PATH="/opt/openrobots/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+elif [ "$DPKG_ARCH" = "arm64" ]; then
+    # universe is usually already enabled on noble; be explicit in case this
+    # runs on a minimal image (e.g. Jetson JetPack defaults).
+    echo "Installing libpinocchio-dev from Ubuntu apt (arm64)..."
+    # Evict any stale robotpkg sources file from a prior amd64-only version of
+    # this script — it has no arm64 builds, so leaving it in place makes every
+    # subsequent `apt-get update` noisy with 404s.
+    if [ -f /etc/apt/sources.list.d/robotpkg.list ]; then
+        echo "  Removing stale /etc/apt/sources.list.d/robotpkg.list (no arm64 builds)."
+        sudo rm -f /etc/apt/sources.list.d/robotpkg.list
+    fi
+    sudo add-apt-repository -y universe >/dev/null 2>&1 || true
+    sudo apt-get update -qq
+    sudo apt-get install -y libpinocchio-dev
 else
-    echo "pinocchio already installed at /opt/openrobots, skipping."
+    echo "ERROR: unsupported architecture '${DPKG_ARCH}' — no pinocchio install path defined." >&2
+    exit 1
 fi
-
-# Export so subsequent cmake invocations (in this shell and in build_nuc.sh)
-# can find pinocchio.
-export CMAKE_PREFIX_PATH="/opt/openrobots:${CMAKE_PREFIX_PATH:-}"
-export PKG_CONFIG_PATH="/opt/openrobots/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
 
 # ── libfranka ────────────────────────────────────────────────────────────────
 if [ ! -d "libfranka" ]; then
@@ -151,4 +170,8 @@ echo "  zmqpp      ${ZMQPP_VERSION}"
 echo "  yaml-cpp   ${YAML_CPP_VERSION}"
 echo "  spdlog     ${SPDLOG_COMMIT:0:12}"
 echo "  protobuf   ${PROTOBUF_VERSION} (local install: protobuf/_install/)"
-echo "  pinocchio  (system, /opt/openrobots/ via robotpkg)"
+if [ "$DPKG_ARCH" = "amd64" ]; then
+    echo "  pinocchio  (system, /opt/openrobots/ via robotpkg)"
+else
+    echo "  pinocchio  (system, /usr via apt libpinocchio-dev)"
+fi
