@@ -32,6 +32,7 @@ APT_PACKAGES=(
     build-essential cmake git libpoco-dev libeigen3-dev libzmq3-dev
     autoconf automake libtool curl make g++ unzip
     libreadline-dev bzip2 libmotif-dev libglfw3
+    libconsole-bridge-dev libtinyxml2-dev lsb-release
 )
 
 MISSING=()
@@ -48,6 +49,30 @@ if [ ${#MISSING[@]} -gt 0 ]; then
 else
     echo "All apt packages already installed."
 fi
+
+# ── pinocchio (via robotpkg → /opt/openrobots) ───────────────────────────────
+# libfranka >= 0.14 uses pinocchio for kinematics. It's not in default Ubuntu
+# apt, so install from the official robotpkg repo. Shared, read-only install
+# at /opt/openrobots — no per-user state, does not block other users.
+PINOCCHIO_PC="/opt/openrobots/lib/pkgconfig/pinocchio.pc"
+if [ ! -f "$PINOCCHIO_PC" ]; then
+    CODENAME="$(lsb_release -cs)"
+    echo "Installing pinocchio via robotpkg for Ubuntu ${CODENAME}..."
+    sudo mkdir -p /etc/apt/keyrings
+    curl -fsSL http://robotpkg.openrobots.org/packages/debian/robotpkg.asc \
+        | sudo tee /etc/apt/keyrings/robotpkg.asc > /dev/null
+    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/robotpkg.asc] http://robotpkg.openrobots.org/packages/debian/pub ${CODENAME} robotpkg" \
+        | sudo tee /etc/apt/sources.list.d/robotpkg.list > /dev/null
+    sudo apt-get update -qq
+    sudo apt-get install -y robotpkg-pinocchio
+else
+    echo "pinocchio already installed at /opt/openrobots, skipping."
+fi
+
+# Export so subsequent cmake invocations (in this shell and in build_nuc.sh)
+# can find pinocchio.
+export CMAKE_PREFIX_PATH="/opt/openrobots:${CMAKE_PREFIX_PATH:-}"
+export PKG_CONFIG_PATH="/opt/openrobots/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
 
 # ── libfranka ────────────────────────────────────────────────────────────────
 if [ ! -d "libfranka" ]; then
@@ -126,3 +151,4 @@ echo "  zmqpp      ${ZMQPP_VERSION}"
 echo "  yaml-cpp   ${YAML_CPP_VERSION}"
 echo "  spdlog     ${SPDLOG_COMMIT:0:12}"
 echo "  protobuf   ${PROTOBUF_VERSION} (local install: protobuf/_install/)"
+echo "  pinocchio  (system, /opt/openrobots/ via robotpkg)"
