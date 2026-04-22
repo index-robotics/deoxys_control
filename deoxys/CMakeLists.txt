@@ -1,7 +1,14 @@
 cmake_minimum_required (VERSION 3.12)
 cmake_policy(SET CMP0074 NEW)
+# RPATH configuration: make every installed executable / shared library carry
+# the paths to its private deps ($ORIGIN/../lib, protobuf/_install/lib) plus
+# the system-wide pinocchio install at /opt/openrobots/lib. This removes any
+# need for /etc/ld.so.conf.d/ entries pointing into a user's home directory,
+# which would otherwise make shared NUC machines block users against each
+# other whenever someone else rebuilt.
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
-set(CMAKE_INSTALL_RPATH "$ORIGIN/../lib;$ORIGIN/../protobuf/_install/lib")
+set(CMAKE_INSTALL_RPATH "$ORIGIN/../lib;$ORIGIN/../protobuf/_install/lib;/opt/openrobots/lib")
+set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
 set(CMAKE_BUILD_RPATH_USE_ORIGIN TRUE)
 
 project (deoxys
@@ -43,8 +50,8 @@ include(${CMAKE_CURRENT_LIST_DIR}/cmake/protobuf.cmake)
 # cmake-format: on
 
 set(FRANKA_PROTO_FILES
-  proto/franka-interface/franka_robot_state.proto
-  proto/franka-interface/franka_controller.proto
+  proto/franka_interface/franka_robot_state.proto
+  proto/franka_interface/franka_controller.proto
   )
 
 set(PROTO_FILES
