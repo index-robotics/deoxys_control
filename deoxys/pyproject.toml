@@ -30,7 +30,7 @@ packages = ["deoxys"]
 
 # Regenerate _pb2.py files from .proto sources at install time.
 [tool.hatch.build.hooks.protobuf]
-dependencies = ["hatch-protobuf"]
+dependencies = ["hatch-protobuf", "grpcio-tools<1.82"]
 proto_paths = ["proto"]
 output_path = "deoxys/proto"
 generate_grpc = false
