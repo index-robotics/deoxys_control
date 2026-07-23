@@ -27,6 +27,12 @@ dependencies = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["deoxys"]
+# deoxys resolves its YAML configs as `deoxys/../config/...` (see
+# utils/log_utils.py + utils/config_utils.py), which only exists for editable /
+# in-tree installs. Ship the config dir alongside the package so non-editable
+# (git/wheel) installs resolve the same relative path.
+[tool.hatch.build.targets.wheel.force-include]
+"config" = "config"
 
 # Regenerate _pb2.py files from .proto sources at install time.
 [tool.hatch.build.hooks.protobuf]
