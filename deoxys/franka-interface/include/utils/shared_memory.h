@@ -1,5 +1,6 @@
 // Copyright 2022 Yifeng Zhu
 
+#include <array>
 #include <atomic>
 #include <memory>
 #include <spdlog/spdlog.h>
@@ -20,9 +21,11 @@ struct SharedMemory {
   std::shared_ptr<traj_utils::BaseTrajInterpolator> traj_interpolator_ptr;
   std::shared_ptr<spdlog::logger> logger;
 
-  // for torque control
-  std::atomic<double> max_torque;
-  std::atomic<double> min_torque;
+  // for torque control: per-joint clamp (joints 1-7). Written once at startup
+  // from control_config.yml before the RT loop starts; read-only in the 1 kHz
+  // callback, so a plain array (not atomic) is safe.
+  std::array<double, 7> max_torque{};
+  std::array<double, 7> min_torque{};
 
   // for velocity control
   std::atomic<double> max_trans_speed;

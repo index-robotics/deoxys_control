@@ -1,9 +1,11 @@
 // Copyright 2022 Yifeng Zhu
 
+#include <array>
 #include <atomic>
 #include <iostream>
 #include <mutex>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <thread>
 
@@ -79,6 +81,27 @@ enum StateEstimatorType {
   NO_ESTIMATOR,
   EXPONENTIAL_SMOOTHING_ESTIMATOR,
 };
+
+// Read a SAFETY torque limit node as a per-joint std::array<double, 7>. Accepts
+// either a length-7 sequence (per-joint) or a plain scalar (broadcast to all 7,
+// for back-compat with the old flat MAX_TORQUE/MIN_TORQUE config).
+std::array<double, 7> ParseTorqueLimit(const YAML::Node &node) {
+  std::array<double, 7> limit{};
+  if (node.IsSequence()) {
+    if (node.size() != 7) {
+      throw std::runtime_error(
+          "CONTROL.SAFETY torque limit must be a scalar or a length-7 "
+          "sequence, got size " +
+          std::to_string(node.size()));
+    }
+    for (size_t i = 0; i < 7; i++) {
+      limit[i] = node[i].as<double>();
+    }
+  } else {
+    limit.fill(node.as<double>());
+  }
+  return limit;
+}
 
 bool GetControllerType(const FrankaControlMessage &franka_control_msg,
                        ControllerType &controller_type) {
@@ -249,11 +272,12 @@ int main(int argc, char **argv) {
     global_handler->logger = log_utils::get_logger(
         config["ARM_LOGGER"]["CONSOLE"]["LOGGER_NAME"].as<std::string>());
     
-    // Read torque limits from the global config
+    // Read per-joint torque limits from the global config (scalar accepted and
+    // broadcast for back-compat).
     global_handler->max_torque =
-        control_config["CONTROL"]["SAFETY"]["MAX_TORQUE"].as<double>();
+        ParseTorqueLimit(control_config["CONTROL"]["SAFETY"]["MAX_TORQUE"]);
     global_handler->min_torque =
-        control_config["CONTROL"]["SAFETY"]["MIN_TORQUE"].as<double>();
+        ParseTorqueLimit(control_config["CONTROL"]["SAFETY"]["MIN_TORQUE"]);
 
     // Read speed limits from the global config
     global_handler->max_trans_speed =
