@@ -41,6 +41,29 @@ public:
                             const double &traj_interpolator_time_fraction){};
   inline virtual void GetNextStep(const double &time_sec,
                                   Eigen::Matrix<double, 7, 1> &joints){};
+
+  // For joints with computed-torque feedforward (desired velocity +
+  // acceleration at the goal). Default delegates to the position-only overloads
+  // and yields zero feedforward, so SMOOTH / MIN_JERK joint interpolators need
+  // no edits.
+  inline virtual void Reset(const double &time_sec,
+                            const Eigen::Matrix<double, 7, 1> &j_start,
+                            const Eigen::Matrix<double, 7, 1> &j_goal,
+                            const Eigen::Matrix<double, 7, 1> &dj_goal,
+                            const Eigen::Matrix<double, 7, 1> &ddj_goal,
+                            const int &policy_rate, const int &rate,
+                            const double &traj_interpolator_time_fraction) {
+    Reset(time_sec, j_start, j_goal, policy_rate, rate,
+          traj_interpolator_time_fraction);
+  };
+  inline virtual void GetNextStep(const double &time_sec,
+                                  Eigen::Matrix<double, 7, 1> &joints,
+                                  Eigen::Matrix<double, 7, 1> &dq,
+                                  Eigen::Matrix<double, 7, 1> &ddq) {
+    GetNextStep(time_sec, joints);
+    dq.setZero();
+    ddq.setZero();
+  };
 };
 } // namespace traj_utils
 

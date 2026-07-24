@@ -49,6 +49,18 @@ public:
   inline virtual std::array<double, 7>
   Step(const franka::RobotState &, const Eigen::Matrix<double, 7, 1> &){};
 
+  // For joints with computed-torque feedforward (desired velocity +
+  // acceleration). Default ignores the feedforward channels and delegates to
+  // the position-only joint Step, so every non-feedforward controller behaves
+  // identically.
+  inline virtual std::array<double, 7>
+  Step(const franka::RobotState &robot_state,
+       const Eigen::Matrix<double, 7, 1> &q_d,
+       const Eigen::Matrix<double, 7, 1> &,
+       const Eigen::Matrix<double, 7, 1> &) {
+    return Step(robot_state, q_d);
+  };
+
   inline void
   SetStateEstimator(const std::shared_ptr<estimator_utils::BaseStateEstimator>
                         &state_estimator_ptr) {

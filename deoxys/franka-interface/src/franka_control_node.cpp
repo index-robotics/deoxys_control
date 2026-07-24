@@ -509,9 +509,15 @@ int main(int argc, char **argv) {
           case TrajInterpolatorType::SMOOTH_JOINT_POSITION:
           case TrajInterpolatorType::MIN_JERK_JOINT_POSITION:
           case TrajInterpolatorType::LINEAR_JOINT_POSITION:
+            // 8-arg joint Reset carries the feedforward goal derivatives.
+            // Safe for all three joint interpolators: SMOOTH / MIN_JERK fall
+            // back to the base default (position-only, zero feedforward), and
+            // the derivatives are zero-initialized unless feedforward is on.
             global_handler->traj_interpolator_ptr->Reset(
                 global_handler->time, current_state_info->joint_positions,
-                goal_state_info->joint_positions, policy_rate, traj_rate,
+                goal_state_info->joint_positions,
+                goal_state_info->joint_velocities,
+                goal_state_info->joint_accelerations, policy_rate, traj_rate,
                 global_handler->traj_interpolator_time_fraction);
             break;
           case TrajInterpolatorType::COSINE_CARTESIAN_VELOCITY:

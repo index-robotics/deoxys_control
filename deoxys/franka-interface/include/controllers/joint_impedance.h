@@ -26,6 +26,12 @@ protected:
 
   bool first_state_ = true;
 
+  // Computed-torque feedforward gates + scales (default off => baseline law).
+  bool ff_enable_ = false;
+  double ff_vel_scale_ = 0.;
+  double ff_acc_scale_ = 0.;
+  bool use_coriolis_ = false;
+
 public:
   JointImpedanceController();
   JointImpedanceController(franka::Model &model);
@@ -37,8 +43,13 @@ public:
   void ComputeGoal(const std::shared_ptr<StateInfo> &state_info,
                    std::shared_ptr<StateInfo> &goal_info);
 
+  // Thin 2-arg Step delegates to the 4-arg one with zero feedforward.
   std::array<double, 7> Step(const franka::RobotState &,
                              const Eigen::Matrix<double, 7, 1> &);
+  std::array<double, 7> Step(const franka::RobotState &,
+                             const Eigen::Matrix<double, 7, 1> &desired_q,
+                             const Eigen::Matrix<double, 7, 1> &desired_dq,
+                             const Eigen::Matrix<double, 7, 1> &desired_ddq);
 };
 } // namespace controller
 

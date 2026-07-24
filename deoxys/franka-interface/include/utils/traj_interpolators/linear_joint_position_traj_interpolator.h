@@ -17,6 +17,18 @@ private:
   Vector7d last_q_t_;
   Vector7d prev_q_goal_;
 
+  // Feedforward channels (desired joint velocity / acceleration), segment-
+  // chained and lerped exactly like q_.
+  Vector7d dq_start_;
+  Vector7d dq_goal_;
+  Vector7d last_dq_t_;
+  Vector7d prev_dq_goal_;
+
+  Vector7d ddq_start_;
+  Vector7d ddq_goal_;
+  Vector7d last_ddq_t_;
+  Vector7d prev_ddq_goal_;
+
   double dt_;
   double last_time_;
   double max_time_;
@@ -75,6 +87,57 @@ public:
       last_time_ = time_sec;
     }
     q_t = last_q_t_;
+  };
+
+  // Feedforward-aware Reset: segment-chain dq/ddq like q (first goal => zero
+  // start, else start = previous goal), then delegate the position setup.
+  inline void Reset(const double &time_sec, const Vector7d &q_start,
+                    const Vector7d &q_goal, const Vector7d &dq_goal,
+                    const Vector7d &ddq_goal, const int &policy_rate,
+                    const int &rate,
+                    const double &traj_interpolator_time_fraction) {
+    if (first_goal_) {
+      dq_start_.setZero();
+      ddq_start_.setZero();
+      prev_dq_goal_.setZero();
+      prev_ddq_goal_.setZero();
+    } else {
+      prev_dq_goal_ = dq_goal_;
+      prev_ddq_goal_ = ddq_goal_;
+      dq_start_ = prev_dq_goal_;
+      ddq_start_ = prev_ddq_goal_;
+    }
+    dq_goal_ = dq_goal;
+    ddq_goal_ = ddq_goal;
+    // Delegates to the 6-arg Reset above, which flips first_goal_ and chains q
+    // consistently with the branch just taken.
+    Reset(time_sec, q_start, q_goal, policy_rate, rate,
+          traj_interpolator_time_fraction);
+  };
+
+  // Feedforward-aware step: lerp all three channels on the same throttled t.
+  // Lerp (not ZOH) keeps per-ms Kd*dq_d changes ~0.15 Nm instead of 6-8 Nm
+  // steps that limitRate would smear into a torque staircase.
+  inline void GetNextStep(const double &time_sec, Vector7d &q_t, Vector7d &dq_t,
+                          Vector7d &ddq_t) {
+    if (!start_) {
+      start_time_ = time_sec;
+      last_q_t_ = q_start_;
+      last_dq_t_ = dq_start_;
+      last_ddq_t_ = ddq_start_;
+      start_ = true;
+    }
+    if (last_time_ + dt_ <= time_sec) {
+      double t =
+          std::min(std::max((time_sec - start_time_) / max_time_, 0.), 1.);
+      last_q_t_ = q_start_ + t * (q_goal_ - q_start_);
+      last_dq_t_ = dq_start_ + t * (dq_goal_ - dq_start_);
+      last_ddq_t_ = ddq_start_ + t * (ddq_goal_ - ddq_start_);
+      last_time_ = time_sec;
+    }
+    q_t = last_q_t_;
+    dq_t = last_dq_t_;
+    ddq_t = last_ddq_t_;
   };
 };
 } // namespace traj_utils
