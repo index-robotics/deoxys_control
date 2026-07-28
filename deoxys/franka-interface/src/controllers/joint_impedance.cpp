@@ -74,6 +74,19 @@ bool JointImpedanceController::ParseMessage(const FrankaControlMessage &msg) {
       ff_vel_scale_ = ff.ff_vel_scale();
       ff_acc_scale_ = ff.ff_acc_scale();
       use_coriolis_ = ff.use_coriolis();
+    } else if (ff.ff_enable()) {
+      // Feedforward was requested but dq_d/ddq_d are not both length 7. We fall
+      // back to the baseline law rather than inject garbage torque -- but say so
+      // loudly (once), so an operator who asked for FF and silently got baseline
+      // isn't left guessing. Warn once to avoid spamming the 20 Hz message loop.
+      static bool warned = false;
+      if (!warned) {
+        std::cerr << "[JointImpedanceController] feedforward requested but dq_d/"
+                     "ddq_d are not both length 7 (got "
+                  << ff.dq_d_size() << "/" << ff.ddq_d_size()
+                  << "); running baseline JOINT_IMPEDANCE." << std::endl;
+        warned = true;
+      }
     }
   }
 

@@ -443,13 +443,23 @@ class FrankaInterface:
                     if joint_feedforward is not None
                     else (np.zeros(7), np.zeros(7))
                 )
+                dq_d = np.asarray(dq_d, dtype=float)
+                ddq_d = np.asarray(ddq_d, dtype=float)
+                # Surface a length mistake here, at the call site. The C++
+                # controller silently drops malformed feedforward and runs
+                # baseline, so an operator would otherwise get position-only
+                # tracking with no error.
+                assert dq_d.shape == (7,) and ddq_d.shape == (7,), (
+                    f"joint feedforward dq_d/ddq_d must be length 7, got "
+                    f"{dq_d.shape}/{ddq_d.shape}"
+                )
                 ff = joint_impedance_msg.feedforward
                 ff.ff_enable = True
                 ff.ff_vel_scale = ff_cfg.vel_scale
                 ff.ff_acc_scale = ff_cfg.acc_scale
                 ff.use_coriolis = ff_cfg.use_coriolis
-                ff.dq_d[:] = np.asarray(dq_d, dtype=float).tolist()
-                ff.ddq_d[:] = np.asarray(ddq_d, dtype=float).tolist()
+                ff.dq_d[:] = dq_d.tolist()
+                ff.ddq_d[:] = ddq_d.tolist()
 
             control_msg = franka_controller_pb2.FrankaControlMessage()
             control_msg.controller_type = (
