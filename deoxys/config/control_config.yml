@@ -1,13 +1,13 @@
 CONTROL:
         SAFETY:
                 # Per-joint torque clamp (joints 1-7), applied every tick after
-                # franka::limitRate. FR3 hardware limits are 87 Nm (j1-4) / 12 Nm
-                # (j5-7); the values here are deliberately conservative. To raise the
-                # proximal budget, ramp in steps (5 -> 8 -> 10/12 on j1-4) with an
-                # operator at e-stop and re-run the FF speed bench (IND-1807); a plain
-                # scalar is still accepted and broadcast to all 7 joints for back-compat.
-                MAX_TORQUE: [5, 5, 5, 5, 5, 5, 5]
-                MIN_TORQUE: [-5, -5, -5, -5, -5, -5, -5]
+                # franka::limitRate. Proximal joints (1-4) run at 10 Nm, wrists
+                # (5-7) at 5 Nm: rig-validated on the FR3 to ×1.0 (IND-1807). FR3
+                # hardware limits are 87 Nm (j1-4) / 12 Nm (j5-7), so these stay
+                # conservative. A plain scalar is still accepted and broadcast to
+                # all 7 joints for back-compat.
+                MAX_TORQUE: [10, 10, 10, 10, 5, 5, 5]
+                MIN_TORQUE: [-10, -10, -10, -10, -5, -5, -5]
                 MAX_TRANS_SPEED: 0.1
                 MIN_TRANS_SPEED: -0.1
                 MAX_ROT_SPEED: 0.1
