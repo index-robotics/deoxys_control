@@ -204,6 +204,24 @@ def verify_controller_config(controller_cfg: dict, use_default=True):
                 "field joint_kd not manually specified, switch to the critical damping formula."
             )
             field_missing = True
+        # Computed-torque feedforward. Absence is the normal case (baseline
+        # law), so default it silently and do NOT flag field_missing -- existing
+        # configs must keep passing verify_controller_config(use_default=False).
+        # Fill per sub-key (like Kp above) so a partial hand-written block during
+        # bring-up (e.g. only `enable: true`) still gets the scale/coriolis
+        # defaults instead of AttributeError-ing in control().
+        ff_defaults = {
+            "enable": False,
+            "vel_scale": 1.0,
+            "acc_scale": 1.0,
+            "use_coriolis": False,
+        }
+        if not check_attr(controller_cfg, "feedforward_cfg"):
+            controller_cfg["feedforward_cfg"] = ff_defaults
+        else:
+            for ff_key, ff_default in ff_defaults.items():
+                if not check_attr(controller_cfg["feedforward_cfg"], ff_key):
+                    controller_cfg["feedforward_cfg"][ff_key] = ff_default
 
     elif controller_cfg["controller_type"] == "JOINT_POSITION":
         if not check_attr(controller_cfg, "traj_interpolator_cfg"):

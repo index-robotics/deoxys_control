@@ -101,10 +101,26 @@ message FrankaJointPositionControllerMessage {
   double speed_factor = 4;
 }
 
+// Computed-torque feedforward configuration for JOINT_IMPEDANCE.
+
+message JointFeedforwardConfig {
+  bool ff_enable = 1;
+  // Scales on the FF terms. Nominal law = 1.0; 0/1 select the A/B arms
+  // (vel-FF only vs full accel-FF); fractional values derate M*ddq_d if the
+  // rigid-body model mismatches the real arm (payload/friction) during
+  // bring-up. Not tuning knobs -- leave at 1.0 once validated.
+  double ff_vel_scale = 2;
+  double ff_acc_scale = 3;
+  bool use_coriolis = 4;
+  repeated double dq_d = 5;  // desired joint velocity at goal (7)
+  repeated double ddq_d = 6; // desired joint acceleration at goal (7)
+}
+
 message FrankaJointImpedanceControllerMessage {
   JointGoal goal = 1;
   repeated double kp = 2;
   repeated double kd = 3;
+  JointFeedforwardConfig feedforward = 4;
 }
 
 message FrankaCartesianVelocityControllerMessage {

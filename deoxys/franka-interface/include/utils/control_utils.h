@@ -65,12 +65,13 @@ inline void JointVelocitySafetyGuardFn(std::array<double, 7> &dq_array,
 }
 
 inline void TorqueSafetyGuardFn(std::array<double, 7> &tau_d_array,
-                                double min_torque, double max_torque) {
+                                const std::array<double, 7> &min_torque,
+                                const std::array<double, 7> &max_torque) {
   for (size_t i = 0; i < tau_d_array.size(); i++) {
-    if (tau_d_array[i] < min_torque) {
-      tau_d_array[i] = min_torque;
-    } else if (tau_d_array[i] > max_torque) {
-      tau_d_array[i] = max_torque;
+    if (tau_d_array[i] < min_torque[i]) {
+      tau_d_array[i] = min_torque[i];
+    } else if (tau_d_array[i] > max_torque[i]) {
+      tau_d_array[i] = max_torque[i];
     }
   }
 }

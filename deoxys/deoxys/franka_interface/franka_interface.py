@@ -227,6 +227,8 @@ class FrankaInterface:
         action: Union[np.ndarray, list],
         controller_cfg: dict = None,
         termination: bool = False,
+        *,
+        joint_feedforward: Union[Tuple, None] = None,
     ):
         """A function that controls every step on the policy level.
 
@@ -235,6 +237,10 @@ class FrankaInterface:
             action (Union[np.ndarray, list]): The action command for the controller.
             controller_cfg (dict, optional): Controller configuration that corresponds to the first argument`controller_type`. Defaults to None.
             termination (bool, optional): If set True, the control will be terminated. Defaults to False.
+            joint_feedforward (tuple, optional): ``(dq_d, ddq_d)`` desired joint
+                velocity / acceleration (length-7 each) for the JOINT_IMPEDANCE
+                computed-torque feedforward. Only consulted when the controller
+                config enables feedforward; ignored otherwise.
         """
         action = np.array(action)
         if self.last_time == None:
@@ -426,6 +432,34 @@ class FrankaInterface:
 
             joint_impedance_msg.kp[:] = controller_cfg.joint_kp
             joint_impedance_msg.kd[:] = controller_cfg.joint_kd
+
+            # Computed-torque feedforward. Only touch the message field when the
+            # config enables it, so the disabled path serializes byte-identical
+            # to a client without this feature.
+            ff_cfg = controller_cfg.feedforward_cfg
+            if ff_cfg.enable:
+                dq_d, ddq_d = (
+                    joint_feedforward
+                    if joint_feedforward is not None
+                    else (np.zeros(7), np.zeros(7))
+                )
+                dq_d = np.asarray(dq_d, dtype=float)
+                ddq_d = np.asarray(ddq_d, dtype=float)
+                # Surface a length mistake here, at the call site. The C++
+                # controller silently drops malformed feedforward and runs
+                # baseline, so an operator would otherwise get position-only
+                # tracking with no error.
+                assert dq_d.shape == (7,) and ddq_d.shape == (7,), (
+                    f"joint feedforward dq_d/ddq_d must be length 7, got "
+                    f"{dq_d.shape}/{ddq_d.shape}"
+                )
+                ff = joint_impedance_msg.feedforward
+                ff.ff_enable = True
+                ff.ff_vel_scale = ff_cfg.vel_scale
+                ff.ff_acc_scale = ff_cfg.acc_scale
+                ff.use_coriolis = ff_cfg.use_coriolis
+                ff.dq_d[:] = dq_d.tolist()
+                ff.ddq_d[:] = ddq_d.tolist()
 
             control_msg = franka_controller_pb2.FrankaControlMessage()
             control_msg.controller_type = (

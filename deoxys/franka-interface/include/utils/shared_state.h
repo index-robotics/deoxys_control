@@ -8,7 +8,15 @@ struct StateInfo {
   Eigen::Vector3d pos_EE_in_base_frame;
   Eigen::Quaterniond quat_EE_in_base_frame;
   Eigen::Matrix<double, 7, 1> joint_positions;
-  Eigen::Matrix<double, 7, 1> joint_velocities; // TODO (Yifeng): not used for now. Will update in the future.
+  // Desired joint velocity / acceleration at the goal, used by the
+  // computed-torque feedforward path. Zero-initialized because the extended
+  // joint Reset reads them for every joint-interpolator controller, and the
+  // enclosing struct is otherwise a plain aggregate with uninitialized Eigen
+  // members.
+  Eigen::Matrix<double, 7, 1> joint_velocities =
+      Eigen::Matrix<double, 7, 1>::Zero();
+  Eigen::Matrix<double, 7, 1> joint_accelerations =
+      Eigen::Matrix<double, 7, 1>::Zero();
   Eigen::Vector3d twist_trans_EE_in_base_frame; // TODO (Yifeng): not used for
                                               // now. Will update in the future.
   Eigen::Vector3d twist_rot_EE_in_base_frame; // TODO (Yifeng): not used for now.

@@ -61,6 +61,35 @@ bool JointImpedanceController::ParseMessage(const FrankaControlMessage &msg) {
   joint_max_ << 2.8978, 1.7628, 2.8973, -0.0698, 2.8973, 3.7525, 2.8973;
   joint_min_ << -2.8973, -1.7628, -2.8973, -3.0718, -2.8973, -0.0175, -2.8973;
 
+  // Computed-torque feedforward (optional). Absent field or malformed arrays
+  // degrade to the exact baseline law rather than injecting garbage torque.
+  ff_enable_ = false;
+  ff_vel_scale_ = 0.;
+  ff_acc_scale_ = 0.;
+  use_coriolis_ = false;
+  if (control_msg_.has_feedforward()) {
+    const auto &ff = control_msg_.feedforward();
+    if (ff.ff_enable() && ff.dq_d_size() == 7 && ff.ddq_d_size() == 7) {
+      ff_enable_ = true;
+      ff_vel_scale_ = ff.ff_vel_scale();
+      ff_acc_scale_ = ff.ff_acc_scale();
+      use_coriolis_ = ff.use_coriolis();
+    } else if (ff.ff_enable()) {
+      // Feedforward was requested but dq_d/ddq_d are not both length 7. We fall
+      // back to the baseline law rather than inject garbage torque -- but say so
+      // loudly (once), so an operator who asked for FF and silently got baseline
+      // isn't left guessing. Warn once to avoid spamming the 20 Hz message loop.
+      static bool warned = false;
+      if (!warned) {
+        std::cerr << "[JointImpedanceController] feedforward requested but dq_d/"
+                     "ddq_d are not both length 7 (got "
+                  << ff.dq_d_size() << "/" << ff.ddq_d_size()
+                  << "); running baseline JOINT_IMPEDANCE." << std::endl;
+        warned = true;
+      }
+    }
+  }
+
   this->state_estimator_ptr_->ParseMessage(msg.state_estimator_msg());
   return true;
 }
@@ -86,11 +115,33 @@ void JointImpedanceController::ComputeGoal(
   // control_msg_.goal().q2(), control_msg_.goal().q3(),
   // control_msg_.goal().q4(), control_msg_.goal().q5(),
   // control_msg_.goal().q6(), control_msg_.goal().q7();
+
+  // Desired joint velocity / acceleration for the feedforward path. Absolute
+  // even when the position goal is a delta. Zeroed unless feedforward is on.
+  goal_state_info->joint_velocities.setZero();
+  goal_state_info->joint_accelerations.setZero();
+  if (ff_enable_) {
+    for (int i = 0; i < 7; i++) {
+      goal_state_info->joint_velocities[i] = control_msg_.feedforward().dq_d(i);
+      goal_state_info->joint_accelerations[i] =
+          control_msg_.feedforward().ddq_d(i);
+    }
+  }
 }
 
 std::array<double, 7>
 JointImpedanceController::Step(const franka::RobotState &robot_state,
                                const Eigen::Matrix<double, 7, 1> &desired_q) {
+  // Thin wrapper for the baseline (feedforward-off) path.
+  Eigen::Matrix<double, 7, 1> zero = Eigen::Matrix<double, 7, 1>::Zero();
+  return Step(robot_state, desired_q, zero, zero);
+}
+
+std::array<double, 7>
+JointImpedanceController::Step(const franka::RobotState &robot_state,
+                               const Eigen::Matrix<double, 7, 1> &desired_q,
+                               const Eigen::Matrix<double, 7, 1> &desired_dq,
+                               const Eigen::Matrix<double, 7, 1> &desired_ddq) {
 
   std::chrono::high_resolution_clock::time_point t1 =
       std::chrono::high_resolution_clock::now();
@@ -127,6 +178,15 @@ JointImpedanceController::Step(const franka::RobotState &robot_state,
   joint_pos_error << desired_q - current_q;
 
   tau_d << Kp.cwiseProduct(joint_pos_error) - Kd.cwiseProduct(current_dq);
+  if (ff_enable_) {
+    // Velocity feedforward collapses the cruise lag; M * ddq_d supplies the
+    // acceleration torque from the budget. Gravity stays libfranka-implicit
+    // (no gravity term added here).
+    tau_d += Kd.cwiseProduct(ff_vel_scale_ * desired_dq) +
+             M * (ff_acc_scale_ * desired_ddq);
+    if (use_coriolis_)
+      tau_d += coriolis;
+  }
   // joint_pos_error << desired_q_ - q;
   // tau_d << Kp.cwiseProduct(joint_pos_error) - Kd.cwiseProduct(dq);
 
