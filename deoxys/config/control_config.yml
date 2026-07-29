@@ -1,11 +1,15 @@
 CONTROL:
         SAFETY:
-                # Per-joint torque clamp (joints 1-7), applied every tick after
-                # franka::limitRate. Proximal joints (1-4) run at 10 Nm, wrists
-                # (5-7) at 5 Nm: rig-validated on the FR3 to ×1.0 (IND-1807). FR3
-                # hardware limits are 87 Nm (j1-4) / 12 Nm (j5-7), so these stay
-                # conservative. A plain scalar is still accepted and broadcast to
-                # all 7 joints for back-compat.
+                # Per-joint torque limits (joints 1-7), in Nm. Applied every tick
+                # after franka::limitRate in the torque callback shared by ALL
+                # controllers, so this bounds JOINT_IMPEDANCE *and* the OSC_* paths
+                # (OSC_POSE/POSITION/YAW) alike -- it is a fleet-wide clamp, not a
+                # feedforward-only one. Proximal joints (1-4) at 10 Nm, wrists (5-7)
+                # at 5: rig-validated on the FR3 to speed x1.0 on a joint-space
+                # min-jerk cycle (IND-1807); the OSC paths inherit the raise and are
+                # well within the FR3 per-joint torque ceilings (87 Nm j1-4 /
+                # 12 Nm j5-7), with libfranka reflexes as the hardware backstop.
+                # A plain scalar is still accepted and broadcast to all 7 joints.
                 MAX_TORQUE: [10, 10, 10, 10, 5, 5, 5]
                 MIN_TORQUE: [-10, -10, -10, -10, -5, -5, -5]
                 MAX_TRANS_SPEED: 0.1

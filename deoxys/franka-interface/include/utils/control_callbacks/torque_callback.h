@@ -119,9 +119,13 @@ CreateTorqueFromJointSpaceCallback(
     }
     global_handler->time += period.toSec();
 
-    Eigen::Matrix<double, 7, 1> desired_q;
-    Eigen::Matrix<double, 7, 1> desired_dq;
-    Eigen::Matrix<double, 7, 1> desired_ddq;
+    // Zero-initialized rather than default-constructed: GetNextStep is expected
+    // to write all three, but this makes a future early-returning interpolator
+    // structurally unable to inject garbage -- an unwritten desired_ddq would be
+    // multiplied by the mass matrix into a bogus feedforward torque.
+    Eigen::Matrix<double, 7, 1> desired_q = Eigen::Matrix<double, 7, 1>::Zero();
+    Eigen::Matrix<double, 7, 1> desired_dq = Eigen::Matrix<double, 7, 1>::Zero();
+    Eigen::Matrix<double, 7, 1> desired_ddq = Eigen::Matrix<double, 7, 1>::Zero();
 
     global_handler->traj_interpolator_ptr->GetNextStep(
         global_handler->time, desired_q, desired_dq, desired_ddq);
