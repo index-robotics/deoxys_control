@@ -176,7 +176,9 @@ std::array<double, 7> OSCImpedanceController::Step(
   Eigen::Quaterniond quat_error(desired_quat_EE_in_base_frame.inverse() *
                                 quat_EE_in_base_frame);
   Eigen::Vector3d ori_error;
-  ori_error << quat_error.x(), quat_error.y(), quat_error.z();
+  // 2*vec(q) ~= theta*axis: the vector part alone is theta/2, which halves
+  // Kp_r against the critically-damped Kd_r = 2*sqrt(Kp_r).
+  ori_error << 2.0 * quat_error.vec();
   ori_error << -T_EE_in_base_frame.linear() * ori_error;
 
   // Compute matrices
@@ -206,7 +208,7 @@ std::array<double, 7> OSCImpedanceController::Step(
   pos_error =
       pos_error.unaryExpr([](double x) { return (abs(x) < 1e-4) ? 0. : x; });
   ori_error =
-      ori_error.unaryExpr([](double x) { return (abs(x) < 5e-3) ? 0. : x; });
+      ori_error.unaryExpr([](double x) { return (abs(x) < 1e-2) ? 0. : x; });
 
   tau_d << jacobian_pos.transpose() *
                    (Lambda_pos *
