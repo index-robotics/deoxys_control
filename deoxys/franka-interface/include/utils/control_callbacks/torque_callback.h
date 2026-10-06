@@ -57,6 +57,8 @@ CreateTorqueFromCartesianSpaceCallback(
 
     Eigen::Vector3d desired_pos_EE_in_base_frame;
     Eigen::Quaterniond desired_quat_EE_in_base_frame;
+    // Zero-initialized so an interpolator that doesn't write the feedforward
+    // channels can't inject a garbage Kd*v_d torque.
     Eigen::Vector3d desired_v = Eigen::Vector3d::Zero();
     Eigen::Vector3d desired_w = Eigen::Vector3d::Zero();
 

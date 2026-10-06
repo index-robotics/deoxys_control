@@ -18,13 +18,18 @@ private:
   Eigen::Quaterniond last_q_t_;
   Eigen::Quaterniond prev_q_goal_;
 
-  // Feedforward velocity, segment-chained and lerped like p_.
+  // Feedforward channels (desired linear / angular velocity), segment-chained
+  // and lerped exactly like p_. Zero-initialized: a pose-only Reset followed by
+  // the feedforward GetNextStep must read zero, not garbage, into Kd*v_d.
   Eigen::Vector3d v_start_ = Eigen::Vector3d::Zero();
   Eigen::Vector3d v_goal_ = Eigen::Vector3d::Zero();
   Eigen::Vector3d last_v_t_ = Eigen::Vector3d::Zero();
+  Eigen::Vector3d prev_v_goal_ = Eigen::Vector3d::Zero();
+
   Eigen::Vector3d w_start_ = Eigen::Vector3d::Zero();
   Eigen::Vector3d w_goal_ = Eigen::Vector3d::Zero();
   Eigen::Vector3d last_w_t_ = Eigen::Vector3d::Zero();
+  Eigen::Vector3d prev_w_goal_ = Eigen::Vector3d::Zero();
 
   double dt_;
   double last_time_;
@@ -103,8 +108,8 @@ public:
     q_t = last_q_t_;
   };
 
-  // Feedforward-aware Reset: chain v/w like p (first goal => zero start, else
-  // start = previous goal), then delegate the pose setup.
+  // Feedforward-aware Reset: segment-chain v/w like p (first goal => zero
+  // start, else start = previous goal), then delegate the pose setup.
   inline void Reset(const double &time_sec, const Eigen::Vector3d &p_start,
                     const Eigen::Quaterniond &q_start,
                     const Eigen::Vector3d &p_goal,
@@ -116,17 +121,25 @@ public:
     if (first_goal_) {
       v_start_.setZero();
       w_start_.setZero();
+      prev_v_goal_.setZero();
+      prev_w_goal_.setZero();
     } else {
-      v_start_ = v_goal_;
-      w_start_ = w_goal_;
+      prev_v_goal_ = v_goal_;
+      prev_w_goal_ = w_goal_;
+      v_start_ = prev_v_goal_;
+      w_start_ = prev_w_goal_;
     }
     v_goal_ = v_goal;
     w_goal_ = w_goal;
+    // Delegates to the 8-arg Reset above, which flips first_goal_ and chains p
+    // consistently with the branch just taken.
     Reset(time_sec, p_start, q_start, p_goal, q_goal, policy_rate, rate,
           traj_interpolator_time_fraction);
   };
 
-  // Lerp (not ZOH) so Kd*v_d changes smoothly instead of stepping each goal.
+  // Feedforward-aware step: lerp all channels on the same throttled t.
+  // Lerp (not ZOH) keeps per-ms Kd*v_d changes small instead of torque steps
+  // that limitRate would smear into a staircase.
   inline void GetNextStep(const double &time_sec, Eigen::Vector3d &p_t,
                           Eigen::Quaterniond &q_t, Eigen::Vector3d &v_t,
                           Eigen::Vector3d &w_t) {

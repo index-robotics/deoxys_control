@@ -17,8 +17,9 @@ struct StateInfo {
       Eigen::Matrix<double, 7, 1>::Zero();
   Eigen::Matrix<double, 7, 1> joint_accelerations =
       Eigen::Matrix<double, 7, 1>::Zero();
-  // EE twist. On the goal, also OSC_POSE's feedforward velocity; zeroed so the
-  // extended pose Reset never reads garbage.
+  // EE twist; on the goal, also the OSC_POSE velocity feedforward.
+  // Zero-initialized because the extended pose Reset reads them for every
+  // pose-interpolator controller.
   Eigen::Vector3d twist_trans_EE_in_base_frame = Eigen::Vector3d::Zero();
   Eigen::Vector3d twist_rot_EE_in_base_frame = Eigen::Vector3d::Zero();
 };

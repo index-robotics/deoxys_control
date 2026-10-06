@@ -523,8 +523,10 @@ int main(int argc, char **argv) {
           case TrajInterpolatorType::LINEAR_POSE:
           case TrajInterpolatorType::LINEAR_POSITION:
           case TrajInterpolatorType::MIN_JERK_POSE:
-            // Goal twist is OSC_POSE's feedforward velocity (zero unless on);
-            // interpolators without feedforward ignore it.
+            // 10-arg pose Reset carries the feedforward goal twist. Safe for
+            // all three pose interpolators: LINEAR_POSITION / MIN_JERK_POSE fall
+            // back to the base default (pose-only, zero feedforward), and the
+            // twist is zeroed by OSC_POSE unless feedforward is on.
             global_handler->traj_interpolator_ptr->Reset(
                 global_handler->time, current_state_info->pos_EE_in_base_frame,
                 current_state_info->quat_EE_in_base_frame,

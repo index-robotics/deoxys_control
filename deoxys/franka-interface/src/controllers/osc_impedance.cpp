@@ -67,8 +67,8 @@ bool OSCImpedanceController::ParseMessage(const FrankaControlMessage &msg) {
   residual_mass_vec_ << Eigen::Map<const Eigen::Matrix<double, 7, 1>>(
       residual_mass_array.data());
 
-  // Velocity feedforward (optional). Absent or malformed degrades to the
-  // baseline law, with a one-time warning if it was requested.
+  // Velocity feedforward (optional). Absent field or malformed array degrades
+  // to the exact baseline law rather than injecting garbage torque.
   ff_enable_ = false;
   ff_vel_scale_ = 0.;
   if (control_msg_.has_feedforward()) {
@@ -77,6 +77,10 @@ bool OSCImpedanceController::ParseMessage(const FrankaControlMessage &msg) {
       ff_enable_ = true;
       ff_vel_scale_ = ff.ff_vel_scale();
     } else if (ff.ff_enable()) {
+      // Feedforward was requested but v_d is not length 6. We fall back to the
+      // baseline law rather than inject garbage torque -- but say so loudly
+      // (once), so an operator who asked for FF and silently got baseline
+      // isn't left guessing. Warn once to avoid spamming the 20 Hz message loop.
       static bool warned = false;
       if (!warned) {
         std::cerr << "[OSCImpedanceController] feedforward requested but v_d "
@@ -124,14 +128,18 @@ void OSCImpedanceController::ComputeGoal(
         Eigen::Quaterniond(absolute_axis_angle);
   }
 
-  // Feedforward twist, absolute even for a delta goal. Always written: the goal
-  // twist is shared with CARTESIAN_VELOCITY and must not leak across a switch.
+  // Desired EE twist for the feedforward path. Absolute even when the pose
+  // goal is a delta. Zeroed unless feedforward is on (the goal twist is shared
+  // with CARTESIAN_VELOCITY, so it must not leak across a controller switch).
   goal_state_info->twist_trans_EE_in_base_frame.setZero();
   goal_state_info->twist_rot_EE_in_base_frame.setZero();
   if (ff_enable_) {
-    const auto &v_d = control_msg_.feedforward().v_d();
-    goal_state_info->twist_trans_EE_in_base_frame << v_d[0], v_d[1], v_d[2];
-    goal_state_info->twist_rot_EE_in_base_frame << v_d[3], v_d[4], v_d[5];
+    for (int i = 0; i < 3; i++) {
+      goal_state_info->twist_trans_EE_in_base_frame[i] =
+          control_msg_.feedforward().v_d(i);
+      goal_state_info->twist_rot_EE_in_base_frame[i] =
+          control_msg_.feedforward().v_d(i + 3);
+    }
   }
 }
 
@@ -139,6 +147,7 @@ std::array<double, 7> OSCImpedanceController::Step(
     const franka::RobotState &robot_state,
     const Eigen::Vector3d &desired_pos_EE_in_base_frame,
     const Eigen::Quaterniond &desired_quat_EE_in_base_frame) {
+  // Thin wrapper for the baseline (feedforward-off) path.
   const Eigen::Vector3d zero = Eigen::Vector3d::Zero();
   return Step(robot_state, desired_pos_EE_in_base_frame,
               desired_quat_EE_in_base_frame, zero, zero);
@@ -249,20 +258,20 @@ std::array<double, 7> OSCImpedanceController::Step(
   ori_error =
       ori_error.unaryExpr([](double x) { return (abs(x) < 5e-3) ? 0. : x; });
 
-  // Feedforward damps toward the desired twist instead of zero, so a moving
-  // target is tracked without the Kd/Kp lag.
-  const double ff_scale = ff_enable_ ? ff_vel_scale_ : 0.;
-  const Eigen::Vector3d v_ref = ff_scale * desired_v;
-  const Eigen::Vector3d w_ref = ff_scale * desired_w;
-
   tau_d << jacobian_pos.transpose() *
                    (Lambda_pos *
-                    (Kp_p * pos_error -
-                     Kd_p * (jacobian_pos * current_dq - v_ref))) +
+                    (Kp_p * pos_error - Kd_p * (jacobian_pos * current_dq))) +
                jacobian_ori.transpose() *
                    (Lambda_ori *
-                    (Kp_r * ori_error -
-                     Kd_r * (jacobian_ori * current_dq - w_ref)));
+                    (Kp_r * ori_error - Kd_r * (jacobian_ori * current_dq)));
+  if (ff_enable_) {
+    // Velocity feedforward collapses the cruise lag: damping acts on the
+    // twist error (v_d - J dq) instead of on J dq alone.
+    tau_d += jacobian_pos.transpose() *
+                 (Lambda_pos * (Kd_p * (ff_vel_scale_ * desired_v))) +
+             jacobian_ori.transpose() *
+                 (Lambda_ori * (Kd_r * (ff_vel_scale_ * desired_w)));
+  }
 
   // nullspace control
   tau_d << tau_d + Nullspace * (static_q_task_ - current_q);

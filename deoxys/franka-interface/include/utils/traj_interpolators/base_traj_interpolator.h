@@ -23,8 +23,9 @@ public:
   inline virtual void GetNextStep(const double &time_sec, Eigen::Vector3d &p_t,
                                   Eigen::Quaterniond &q_t){};
 
-  // For pose with velocity feedforward. Default delegates to the pose-only
-  // overloads and yields zero feedforward.
+  // For pose with velocity feedforward (desired linear / angular velocity at
+  // the goal). Default delegates to the pose-only overloads and yields zero
+  // feedforward, so LINEAR_POSITION / MIN_JERK_POSE interpolators need no edits.
   inline virtual void
   Reset(const double &time_sec, const Eigen::Vector3d &p_start,
         const Eigen::Quaterniond &q_start, const Eigen::Vector3d &p_goal,

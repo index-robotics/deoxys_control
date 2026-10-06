@@ -20,7 +20,7 @@ protected:
   Eigen::Array<double, 7, 1> joint_min_;
   Eigen::Array<double, 7, 1> avoidance_weights_;
 
-  // Velocity feedforward (default off => baseline law).
+  // Velocity feedforward gate + scale (default off => baseline law).
   bool ff_enable_ = false;
   double ff_vel_scale_ = 0.;
 
