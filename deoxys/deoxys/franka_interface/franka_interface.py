@@ -229,7 +229,7 @@ class FrankaInterface:
         termination: bool = False,
         *,
         joint_feedforward: Union[Tuple, None] = None,
-        cartesian_feedforward: Union[np.ndarray, list, None] = None,
+        cartesian_feedforward: Union[Tuple, None] = None,
     ):
         """A function that controls every step on the policy level.
 
@@ -242,10 +242,10 @@ class FrankaInterface:
                 velocity / acceleration (length-7 each) for the JOINT_IMPEDANCE
                 computed-torque feedforward. Only consulted when the controller
                 config enables feedforward; ignored otherwise.
-            cartesian_feedforward (array, optional): ``v_d`` desired EE twist
-                ``[vx, vy, vz, wx, wy, wz]`` (length 6, base frame) for the
-                OSC_POSE velocity feedforward. Only consulted when the controller
-                config enables feedforward; ignored otherwise.
+            cartesian_feedforward (tuple, optional): ``(v_d, a_d)`` desired EE
+                twist / acceleration ``[linear(3), angular(3)]`` (length-6 each,
+                base frame) for the OSC_POSE feedforward. Only consulted when the
+                controller config enables feedforward; ignored otherwise.
         """
         action = np.array(action)
         if self.last_time == None:
@@ -296,23 +296,27 @@ class FrankaInterface:
             # to a client without this feature.
             ff_cfg = controller_cfg.feedforward_cfg
             if ff_cfg.enable:
-                v_d = (
+                v_d, a_d = (
                     cartesian_feedforward
                     if cartesian_feedforward is not None
-                    else np.zeros(6)
+                    else (np.zeros(6), np.zeros(6))
                 )
                 v_d = np.asarray(v_d, dtype=float)
+                a_d = np.asarray(a_d, dtype=float)
                 # Surface a length mistake here, at the call site. The C++
                 # controller silently drops malformed feedforward and runs
                 # baseline, so an operator would otherwise get position-only
                 # tracking with no error.
-                assert v_d.shape == (6,), (
-                    f"cartesian feedforward v_d must be length 6, got {v_d.shape}"
+                assert v_d.shape == (6,) and a_d.shape == (6,), (
+                    f"cartesian feedforward v_d/a_d must be length 6, got "
+                    f"{v_d.shape}/{a_d.shape}"
                 )
                 ff = osc_msg.feedforward
                 ff.ff_enable = True
                 ff.ff_vel_scale = ff_cfg.vel_scale
+                ff.ff_acc_scale = ff_cfg.acc_scale
                 ff.v_d[:] = v_d.tolist()
+                ff.a_d[:] = a_d.tolist()
 
             action[0:3] *= controller_cfg.action_scale.translation
             action[3 : self.last_gripper_dim] *= controller_cfg.action_scale.rotation

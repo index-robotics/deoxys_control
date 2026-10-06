@@ -89,3 +89,5 @@ def test_osc_pose_feedforward_cfg_defaults(block):
     verify_controller_config(cfg, use_default=False)
     assert cfg.feedforward_cfg.enable is (block is not None)
     assert cfg.feedforward_cfg.vel_scale == 1.0
+    # Acceleration FF stays off unless asked for, even with velocity FF on.
+    assert cfg.feedforward_cfg.acc_scale == 0.0

@@ -50,11 +50,13 @@ def test_default_feedforward_submessage_adds_no_bytes():
 
 
 def test_enabled_feedforward_roundtrips():
-    """The enabled path carries the flag, scale and twist through a round trip."""
+    """The enabled path carries the flag, scales and 6-vectors through a round trip."""
     msg = _baseline_msg()
     msg.feedforward.ff_enable = True
     msg.feedforward.ff_vel_scale = 1.0
+    msg.feedforward.ff_acc_scale = 0.5
     msg.feedforward.v_d[:] = [0.1, -0.2, 0.3, 0.4, -0.5, 0.6]
+    msg.feedforward.a_d[:] = [0.2] * 6
 
     assert "feedforward" in {f.name for f, _ in msg.ListFields()}
 
@@ -62,6 +64,8 @@ def test_enabled_feedforward_roundtrips():
     parsed.ParseFromString(msg.SerializeToString())
     assert parsed.feedforward.ff_enable is True
     assert parsed.feedforward.ff_vel_scale == 1.0
+    assert parsed.feedforward.ff_acc_scale == 0.5
     assert list(parsed.feedforward.v_d) == [0.1, -0.2, 0.3, 0.4, -0.5, 0.6]
+    assert list(parsed.feedforward.a_d) == [0.2] * 6
     # Baseline goal/gains are preserved alongside the feedforward block.
     assert list(parsed.translational_stiffness) == [450.0] * 3

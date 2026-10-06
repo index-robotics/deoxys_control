@@ -189,10 +189,13 @@ def verify_controller_config(controller_cfg: dict, use_default=True):
         # law), so default it silently and do NOT flag field_missing -- existing
         # configs must keep passing verify_controller_config(use_default=False).
         # Fill per sub-key so a partial hand-written block (e.g. only
-        # `enable: true`) still gets the scale default.
+        # `enable: true`) still gets the scale defaults. acc_scale defaults to
+        # 0 (unlike JOINT_IMPEDANCE): a_d from a policy chunk is a noisy second
+        # difference, so acceleration FF is opt-in on top of velocity FF.
         ff_defaults = {
             "enable": False,
             "vel_scale": 1.0,
+            "acc_scale": 0.0,
         }
         if not check_attr(controller_cfg, "feedforward_cfg"):
             controller_cfg["feedforward_cfg"] = ff_defaults

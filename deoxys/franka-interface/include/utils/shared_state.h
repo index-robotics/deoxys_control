@@ -17,10 +17,13 @@ struct StateInfo {
       Eigen::Matrix<double, 7, 1>::Zero();
   Eigen::Matrix<double, 7, 1> joint_accelerations =
       Eigen::Matrix<double, 7, 1>::Zero();
-  // EE twist; on the goal, also the OSC_POSE velocity feedforward.
+  // EE twist; on the goal, also the OSC_POSE velocity feedforward. Desired EE
+  // acceleration at the goal for the OSC_POSE acceleration feedforward.
   // Zero-initialized because the extended pose Reset reads them for every
   // pose-interpolator controller.
   Eigen::Vector3d twist_trans_EE_in_base_frame = Eigen::Vector3d::Zero();
   Eigen::Vector3d twist_rot_EE_in_base_frame = Eigen::Vector3d::Zero();
+  Eigen::Vector3d accel_trans_EE_in_base_frame = Eigen::Vector3d::Zero();
+  Eigen::Vector3d accel_rot_EE_in_base_frame = Eigen::Vector3d::Zero();
 };
 #endif // DEOXYS_FRANKA_INTERFACE_INCLUDE_UTILS_SHARED_STATE_H_
