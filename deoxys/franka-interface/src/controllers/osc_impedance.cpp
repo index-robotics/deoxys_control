@@ -67,6 +67,27 @@ bool OSCImpedanceController::ParseMessage(const FrankaControlMessage &msg) {
   residual_mass_vec_ << Eigen::Map<const Eigen::Matrix<double, 7, 1>>(
       residual_mass_array.data());
 
+  // Velocity feedforward (optional). Absent or malformed degrades to the
+  // baseline law, with a one-time warning if it was requested.
+  ff_enable_ = false;
+  ff_vel_scale_ = 0.;
+  if (control_msg_.has_feedforward()) {
+    const auto &ff = control_msg_.feedforward();
+    if (ff.ff_enable() && ff.v_d_size() == 6) {
+      ff_enable_ = true;
+      ff_vel_scale_ = ff.ff_vel_scale();
+    } else if (ff.ff_enable()) {
+      static bool warned = false;
+      if (!warned) {
+        std::cerr << "[OSCImpedanceController] feedforward requested but v_d "
+                     "has length "
+                  << ff.v_d_size() << ", not 6; running baseline OSC_POSE."
+                  << std::endl;
+        warned = true;
+      }
+    }
+  }
+
   this->state_estimator_ptr_->ParseMessage(msg.state_estimator_msg());
 
   return true;
@@ -102,12 +123,32 @@ void OSCImpedanceController::ComputeGoal(
     goal_state_info->quat_EE_in_base_frame =
         Eigen::Quaterniond(absolute_axis_angle);
   }
+
+  // Feedforward twist, absolute even for a delta goal. Always written: the goal
+  // twist is shared with CARTESIAN_VELOCITY and must not leak across a switch.
+  goal_state_info->twist_trans_EE_in_base_frame.setZero();
+  goal_state_info->twist_rot_EE_in_base_frame.setZero();
+  if (ff_enable_) {
+    const auto &v_d = control_msg_.feedforward().v_d();
+    goal_state_info->twist_trans_EE_in_base_frame << v_d[0], v_d[1], v_d[2];
+    goal_state_info->twist_rot_EE_in_base_frame << v_d[3], v_d[4], v_d[5];
+  }
 }
 
 std::array<double, 7> OSCImpedanceController::Step(
     const franka::RobotState &robot_state,
     const Eigen::Vector3d &desired_pos_EE_in_base_frame,
     const Eigen::Quaterniond &desired_quat_EE_in_base_frame) {
+  const Eigen::Vector3d zero = Eigen::Vector3d::Zero();
+  return Step(robot_state, desired_pos_EE_in_base_frame,
+              desired_quat_EE_in_base_frame, zero, zero);
+}
+
+std::array<double, 7> OSCImpedanceController::Step(
+    const franka::RobotState &robot_state,
+    const Eigen::Vector3d &desired_pos_EE_in_base_frame,
+    const Eigen::Quaterniond &desired_quat_EE_in_base_frame,
+    const Eigen::Vector3d &desired_v, const Eigen::Vector3d &desired_w) {
 
   std::chrono::high_resolution_clock::time_point t1 =
       std::chrono::high_resolution_clock::now();
@@ -208,12 +249,20 @@ std::array<double, 7> OSCImpedanceController::Step(
   ori_error =
       ori_error.unaryExpr([](double x) { return (abs(x) < 5e-3) ? 0. : x; });
 
+  // Feedforward damps toward the desired twist instead of zero, so a moving
+  // target is tracked without the Kd/Kp lag.
+  const double ff_scale = ff_enable_ ? ff_vel_scale_ : 0.;
+  const Eigen::Vector3d v_ref = ff_scale * desired_v;
+  const Eigen::Vector3d w_ref = ff_scale * desired_w;
+
   tau_d << jacobian_pos.transpose() *
                    (Lambda_pos *
-                    (Kp_p * pos_error - Kd_p * (jacobian_pos * current_dq))) +
+                    (Kp_p * pos_error -
+                     Kd_p * (jacobian_pos * current_dq - v_ref))) +
                jacobian_ori.transpose() *
                    (Lambda_ori *
-                    (Kp_r * ori_error - Kd_r * (jacobian_ori * current_dq)));
+                    (Kp_r * ori_error -
+                     Kd_r * (jacobian_ori * current_dq - w_ref)));
 
   // nullspace control
   tau_d << tau_d + Nullspace * (static_q_task_ - current_q);

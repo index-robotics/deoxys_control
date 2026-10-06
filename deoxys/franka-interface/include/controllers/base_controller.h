@@ -40,6 +40,15 @@ public:
                                             const Eigen::Vector3d &,
                                             const Eigen::Quaterniond &){};
 
+  // For pose with velocity feedforward (desired linear / angular velocity).
+  // Default ignores it, so non-feedforward pose controllers are unchanged.
+  inline virtual std::array<double, 7>
+  Step(const franka::RobotState &robot_state, const Eigen::Vector3d &p_d,
+       const Eigen::Quaterniond &q_d, const Eigen::Vector3d &,
+       const Eigen::Vector3d &) {
+    return Step(robot_state, p_d, q_d);
+  };
+
   // For cartesian velocity
   inline virtual std::array<double, 6> Step(const franka::RobotState &,
                                             const Eigen::Vector3d &,

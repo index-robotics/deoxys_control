@@ -229,6 +229,7 @@ class FrankaInterface:
         termination: bool = False,
         *,
         joint_feedforward: Union[Tuple, None] = None,
+        cartesian_feedforward: Union[np.ndarray, list, None] = None,
     ):
         """A function that controls every step on the policy level.
 
@@ -241,6 +242,10 @@ class FrankaInterface:
                 velocity / acceleration (length-7 each) for the JOINT_IMPEDANCE
                 computed-torque feedforward. Only consulted when the controller
                 config enables feedforward; ignored otherwise.
+            cartesian_feedforward (array, optional): desired EE twist
+                ``[vx, vy, vz, wx, wy, wz]`` in the base frame for OSC_POSE
+                velocity feedforward. Only consulted when the controller config
+                enables feedforward; ignored otherwise.
         """
         action = np.array(action)
         if self.last_time == None:
@@ -285,6 +290,24 @@ class FrankaInterface:
 
             osc_config.residual_mass_vec[:] = controller_cfg.residual_mass_vec
             osc_msg.config.CopyFrom(osc_config)
+
+            # Velocity feedforward. Only touch the field when enabled, so the
+            # disabled path serializes byte-identical to a pre-feature client.
+            ff_cfg = controller_cfg.feedforward_cfg
+            if ff_cfg.enable:
+                v_d = (
+                    np.zeros(6)
+                    if cartesian_feedforward is None
+                    else np.asarray(cartesian_feedforward, dtype=float)
+                )
+                # The C++ side silently runs baseline on a bad length; fail here.
+                assert v_d.shape == (6,), (
+                    f"cartesian feedforward must be length 6, got {v_d.shape}"
+                )
+                osc_msg.feedforward.ff_enable = True
+                osc_msg.feedforward.ff_vel_scale = ff_cfg.vel_scale
+                osc_msg.feedforward.v_d[:] = v_d.tolist()
+
             action[0:3] *= controller_cfg.action_scale.translation
             action[3 : self.last_gripper_dim] *= controller_cfg.action_scale.rotation
 

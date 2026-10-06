@@ -23,6 +23,25 @@ public:
   inline virtual void GetNextStep(const double &time_sec, Eigen::Vector3d &p_t,
                                   Eigen::Quaterniond &q_t){};
 
+  // For pose with velocity feedforward. Default delegates to the pose-only
+  // overloads and yields zero feedforward.
+  inline virtual void
+  Reset(const double &time_sec, const Eigen::Vector3d &p_start,
+        const Eigen::Quaterniond &q_start, const Eigen::Vector3d &p_goal,
+        const Eigen::Quaterniond &q_goal, const Eigen::Vector3d &v_goal,
+        const Eigen::Vector3d &w_goal, const int &policy_rate, const int &rate,
+        const double &traj_interpolator_time_fraction) {
+    Reset(time_sec, p_start, q_start, p_goal, q_goal, policy_rate, rate,
+          traj_interpolator_time_fraction);
+  };
+  inline virtual void GetNextStep(const double &time_sec, Eigen::Vector3d &p_t,
+                                  Eigen::Quaterniond &q_t, Eigen::Vector3d &v_t,
+                                  Eigen::Vector3d &w_t) {
+    GetNextStep(time_sec, p_t, q_t);
+    v_t.setZero();
+    w_t.setZero();
+  };
+
   // For cartesian velocity
   inline virtual void Reset(const double &time_sec, 
                             const Eigen::Vector3d &twist_trans_start,

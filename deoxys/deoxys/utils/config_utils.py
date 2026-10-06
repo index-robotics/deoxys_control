@@ -185,6 +185,15 @@ def verify_controller_config(controller_cfg: dict, use_default=True):
                 controller_cfg["action_scale"]["rotation"] = 1.0
                 logger.warning("field rotation in action_scale not specified!!!")
                 field_missing = True
+        # Velocity feedforward (OSC_POSE only). Absence is the normal case, so
+        # default it silently without flagging field_missing.
+        ff_defaults = {"enable": False, "vel_scale": 1.0}
+        if not check_attr(controller_cfg, "feedforward_cfg"):
+            controller_cfg["feedforward_cfg"] = ff_defaults
+        else:
+            for ff_key, ff_default in ff_defaults.items():
+                if not check_attr(controller_cfg["feedforward_cfg"], ff_key):
+                    controller_cfg["feedforward_cfg"][ff_key] = ff_default
 
     elif controller_cfg["controller_type"] == "JOINT_IMPEDANCE":
         if not check_attr(controller_cfg, "traj_interpolator_cfg"):

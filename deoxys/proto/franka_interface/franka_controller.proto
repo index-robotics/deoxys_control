@@ -86,12 +86,22 @@ message FrankaDummyControllerMessage {
   bool termination = 2;
 }
 
+// Velocity feedforward for OSC_POSE: damps toward v_d instead of zero, removing
+// the Kd/Kp tracking lag on a moving target.
+
+message CartesianFeedforwardConfig {
+  bool ff_enable = 1;
+  double ff_vel_scale = 2;
+  repeated double v_d = 3; // desired EE twist at goal, base frame (vx vy vz wx wy wz)
+}
+
 message FrankaOSCPoseControllerMessage {
   Goal goal = 1;
   repeated double translational_stiffness = 2;
   repeated double rotational_stiffness = 3;
   bool termination = 4;
   FrankaOSCControllerConfig config = 5;
+  CartesianFeedforwardConfig feedforward = 6;
 }
 
 message FrankaJointPositionControllerMessage {
