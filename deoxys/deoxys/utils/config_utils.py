@@ -185,6 +185,24 @@ def verify_controller_config(controller_cfg: dict, use_default=True):
                 controller_cfg["action_scale"]["rotation"] = 1.0
                 logger.warning("field rotation in action_scale not specified!!!")
                 field_missing = True
+        # Velocity feedforward (OSC_POSE). Absence is the normal case (baseline
+        # law), so default it silently and do NOT flag field_missing -- existing
+        # configs must keep passing verify_controller_config(use_default=False).
+        # Fill per sub-key so a partial hand-written block (e.g. only
+        # `enable: true`) still gets the scale defaults. acc_scale defaults to
+        # 0 (unlike JOINT_IMPEDANCE): a_d from a policy chunk is a noisy second
+        # difference, so acceleration FF is opt-in on top of velocity FF.
+        ff_defaults = {
+            "enable": False,
+            "vel_scale": 1.0,
+            "acc_scale": 0.0,
+        }
+        if not check_attr(controller_cfg, "feedforward_cfg"):
+            controller_cfg["feedforward_cfg"] = ff_defaults
+        else:
+            for ff_key, ff_default in ff_defaults.items():
+                if not check_attr(controller_cfg["feedforward_cfg"], ff_key):
+                    controller_cfg["feedforward_cfg"][ff_key] = ff_default
 
     elif controller_cfg["controller_type"] == "JOINT_IMPEDANCE":
         if not check_attr(controller_cfg, "traj_interpolator_cfg"):

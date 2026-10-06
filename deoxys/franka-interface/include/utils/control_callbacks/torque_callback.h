@@ -48,23 +48,35 @@ CreateTorqueFromCartesianSpaceCallback(
           0., current_state_info->pos_EE_in_base_frame,
           current_state_info->quat_EE_in_base_frame,
           goal_state_info->pos_EE_in_base_frame,
-          goal_state_info->quat_EE_in_base_frame, policy_rate, traj_rate,
+          goal_state_info->quat_EE_in_base_frame,
+          goal_state_info->twist_trans_EE_in_base_frame,
+          goal_state_info->twist_rot_EE_in_base_frame,
+          goal_state_info->accel_trans_EE_in_base_frame,
+          goal_state_info->accel_rot_EE_in_base_frame, policy_rate, traj_rate,
           global_handler->traj_interpolator_time_fraction);
     }
     global_handler->time += period.toSec();
 
     Eigen::Vector3d desired_pos_EE_in_base_frame;
     Eigen::Quaterniond desired_quat_EE_in_base_frame;
+    // Zero-initialized so an interpolator that doesn't write the feedforward
+    // channels can't inject a garbage feedforward torque.
+    Eigen::Vector3d desired_v = Eigen::Vector3d::Zero();
+    Eigen::Vector3d desired_w = Eigen::Vector3d::Zero();
+    Eigen::Vector3d desired_a = Eigen::Vector3d::Zero();
+    Eigen::Vector3d desired_alpha = Eigen::Vector3d::Zero();
 
     global_handler->traj_interpolator_ptr->GetNextStep(
         global_handler->time, desired_pos_EE_in_base_frame,
-        desired_quat_EE_in_base_frame);
+        desired_quat_EE_in_base_frame, desired_v, desired_w, desired_a,
+        desired_alpha);
 
     state_publisher->UpdateNewState(robot_state, &model);
 
     tau_d_array = global_handler->controller_ptr->Step(
         robot_state, desired_pos_EE_in_base_frame,
-        desired_quat_EE_in_base_frame);
+        desired_quat_EE_in_base_frame, desired_v, desired_w, desired_a,
+        desired_alpha);
 
     std::array<double, 7> tau_d_rate_limited = franka::limitRate(
         franka::kMaxTorqueRate, tau_d_array, robot_state.tau_J_d);

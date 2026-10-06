@@ -67,6 +67,34 @@ bool OSCImpedanceController::ParseMessage(const FrankaControlMessage &msg) {
   residual_mass_vec_ << Eigen::Map<const Eigen::Matrix<double, 7, 1>>(
       residual_mass_array.data());
 
+  // Feedforward (optional). Absent field or malformed arrays degrade to the
+  // exact baseline law rather than injecting garbage torque.
+  ff_enable_ = false;
+  ff_vel_scale_ = 0.;
+  ff_acc_scale_ = 0.;
+  if (control_msg_.has_feedforward()) {
+    const auto &ff = control_msg_.feedforward();
+    if (ff.ff_enable() && ff.v_d_size() == 6 && ff.a_d_size() == 6) {
+      ff_enable_ = true;
+      ff_vel_scale_ = ff.ff_vel_scale();
+      ff_acc_scale_ = ff.ff_acc_scale();
+    } else if (ff.ff_enable()) {
+      // Feedforward was requested but v_d/a_d are not both length 6. We fall
+      // back to the baseline law rather than inject garbage torque -- but say
+      // so loudly (once), so an operator who asked for FF and silently got
+      // baseline isn't left guessing. Warn once to avoid spamming the 20 Hz
+      // message loop.
+      static bool warned = false;
+      if (!warned) {
+        std::cerr << "[OSCImpedanceController] feedforward requested but v_d/"
+                     "a_d are not both length 6 (got "
+                  << ff.v_d_size() << "/" << ff.a_d_size()
+                  << "); running baseline OSC_POSE." << std::endl;
+        warned = true;
+      }
+    }
+  }
+
   this->state_estimator_ptr_->ParseMessage(msg.state_estimator_msg());
 
   return true;
@@ -102,12 +130,45 @@ void OSCImpedanceController::ComputeGoal(
     goal_state_info->quat_EE_in_base_frame =
         Eigen::Quaterniond(absolute_axis_angle);
   }
+
+  // Desired EE twist / acceleration for the feedforward path. Absolute even
+  // when the pose goal is a delta. Zeroed unless feedforward is on (the goal
+  // twist is shared with CARTESIAN_VELOCITY, so it must not leak across a
+  // controller switch).
+  goal_state_info->twist_trans_EE_in_base_frame.setZero();
+  goal_state_info->twist_rot_EE_in_base_frame.setZero();
+  goal_state_info->accel_trans_EE_in_base_frame.setZero();
+  goal_state_info->accel_rot_EE_in_base_frame.setZero();
+  if (ff_enable_) {
+    for (int i = 0; i < 3; i++) {
+      goal_state_info->twist_trans_EE_in_base_frame[i] =
+          control_msg_.feedforward().v_d(i);
+      goal_state_info->twist_rot_EE_in_base_frame[i] =
+          control_msg_.feedforward().v_d(i + 3);
+      goal_state_info->accel_trans_EE_in_base_frame[i] =
+          control_msg_.feedforward().a_d(i);
+      goal_state_info->accel_rot_EE_in_base_frame[i] =
+          control_msg_.feedforward().a_d(i + 3);
+    }
+  }
 }
 
 std::array<double, 7> OSCImpedanceController::Step(
     const franka::RobotState &robot_state,
     const Eigen::Vector3d &desired_pos_EE_in_base_frame,
     const Eigen::Quaterniond &desired_quat_EE_in_base_frame) {
+  // Thin wrapper for the baseline (feedforward-off) path.
+  const Eigen::Vector3d zero = Eigen::Vector3d::Zero();
+  return Step(robot_state, desired_pos_EE_in_base_frame,
+              desired_quat_EE_in_base_frame, zero, zero, zero, zero);
+}
+
+std::array<double, 7> OSCImpedanceController::Step(
+    const franka::RobotState &robot_state,
+    const Eigen::Vector3d &desired_pos_EE_in_base_frame,
+    const Eigen::Quaterniond &desired_quat_EE_in_base_frame,
+    const Eigen::Vector3d &desired_v, const Eigen::Vector3d &desired_w,
+    const Eigen::Vector3d &desired_a, const Eigen::Vector3d &desired_alpha) {
 
   std::chrono::high_resolution_clock::time_point t1 =
       std::chrono::high_resolution_clock::now();
@@ -214,6 +275,17 @@ std::array<double, 7> OSCImpedanceController::Step(
                jacobian_ori.transpose() *
                    (Lambda_ori *
                     (Kp_r * ori_error - Kd_r * (jacobian_ori * current_dq)));
+  if (ff_enable_) {
+    // Velocity feedforward collapses the cruise lag (damping acts on the twist
+    // error v_d - J dq); Lambda * a_d supplies the acceleration force from the
+    // task-space inertia. Gravity stays libfranka-implicit.
+    tau_d += jacobian_pos.transpose() *
+                 (Lambda_pos * (Kd_p * (ff_vel_scale_ * desired_v) +
+                                ff_acc_scale_ * desired_a)) +
+             jacobian_ori.transpose() *
+                 (Lambda_ori * (Kd_r * (ff_vel_scale_ * desired_w) +
+                                ff_acc_scale_ * desired_alpha));
+  }
 
   // nullspace control
   tau_d << tau_d + Nullspace * (static_q_task_ - current_q);
