@@ -3,6 +3,7 @@
 #include <Eigen/Core>
 #include <Eigen/Dense>
 #include <algorithm>
+#include <cmath>
 #include <iostream>
 
 #ifndef DEOXYS_FRANKA_INTERFACE_INCLUDE_UTILS_CONTROL_UTILS_H_
@@ -74,6 +75,31 @@ inline void TorqueSafetyGuardFn(std::array<double, 7> &tau_d_array,
       tau_d_array[i] = max_torque[i];
     }
   }
+}
+
+// Axis-angle error (rad) of current vs desired, rotated by -R_EE_in_base,
+// shrunk by `deadband` (no torque step at its edge) and clipped to `max_norm`.
+inline Eigen::Vector3d OrientationError(const Eigen::Quaterniond &desired,
+                                        const Eigen::Quaterniond &current,
+                                        const Eigen::Matrix3d &R_EE_in_base,
+                                        double deadband = 1e-2,
+                                        double max_norm = 0.5) {
+  Eigen::Quaterniond q_err(desired.inverse() * current);
+  if (q_err.w() < 0.0) {
+    q_err.coeffs() << -q_err.coeffs();
+  }
+  const double s = q_err.vec().norm();
+  // Exact log map; 2*vec(q) is its small-angle limit.
+  Eigen::Vector3d err = (s > 1e-9)
+                            ? Eigen::Vector3d(2.0 * std::atan2(s, q_err.w()) /
+                                              s * q_err.vec())
+                            : Eigen::Vector3d(2.0 * q_err.vec());
+  err = -R_EE_in_base * err;
+  const double n = err.norm();
+  if (n <= deadband) {
+    return Eigen::Vector3d::Zero();
+  }
+  return err * (std::min(n, max_norm + deadband) - deadband) / n;
 }
 
 } // namespace control_utils

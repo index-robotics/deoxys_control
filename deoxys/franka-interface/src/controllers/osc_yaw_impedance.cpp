@@ -201,21 +201,12 @@ std::array<double, 7> OSCYawImpedanceController::Step(
   pos_EE_in_base_frame = this->state_estimator_ptr_->GetCurrentEEFPos();
   quat_EE_in_base_frame = this->state_estimator_ptr_->GetCurrentEEFQuat();
 
-  if (fixed_desired_quat_EE_in_base_frame.coeffs().dot(
-          quat_EE_in_base_frame.coeffs()) < 0.0) {
-    quat_EE_in_base_frame.coeffs() << -quat_EE_in_base_frame.coeffs();
-  }
-
   Eigen::Vector3d pos_error;
 
   pos_error << desired_pos_EE_in_base_frame - pos_EE_in_base_frame;
-  Eigen::Quaterniond quat_error(fixed_desired_quat_EE_in_base_frame.inverse() *
-                                quat_EE_in_base_frame);
-  Eigen::Vector3d ori_error;
-  // 2*vec(q) ~= theta*axis: the vector part alone is theta/2, which halves
-  // Kp_r against the critically-damped Kd_r = 2*sqrt(Kp_r).
-  ori_error << 2.0 * quat_error.vec();
-  ori_error << -T_EE_in_base_frame.linear() * ori_error;
+  Eigen::Vector3d ori_error(control_utils::OrientationError(
+      fixed_desired_quat_EE_in_base_frame, quat_EE_in_base_frame,
+      T_EE_in_base_frame.linear()));
 
   // Compute matrices
   Eigen::Matrix<double, 7, 7> M_inv(M.inverse());
@@ -243,8 +234,6 @@ std::array<double, 7> OSCYawImpedanceController::Step(
 
   pos_error =
       pos_error.unaryExpr([](double x) { return (abs(x) < 1e-4) ? 0. : x; });
-  ori_error =
-      ori_error.unaryExpr([](double x) { return (abs(x) < 1e-2) ? 0. : x; });
 
   tau_d << jacobian_pos.transpose() *
                    (Lambda_pos *
