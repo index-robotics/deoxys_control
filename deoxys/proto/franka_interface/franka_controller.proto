@@ -92,6 +92,10 @@ message FrankaOSCPoseControllerMessage {
   repeated double rotational_stiffness = 3;
   bool termination = 4;
   FrankaOSCControllerConfig config = 5;
+  // Field 6 is reserved for CartesianFeedforwardConfig feedforward (#13).
+  // Optional; empty means 2*sqrt(stiffness).
+  repeated double translational_damping = 7;
+  repeated double rotational_damping = 8;
 }
 
 message FrankaJointPositionControllerMessage {
