@@ -368,8 +368,6 @@ class FrankaInterface:
             osc_msg = franka_controller_pb2.FrankaOSCPoseControllerMessage()
             osc_msg.translational_stiffness[:] = controller_cfg.Kp.translation
             osc_msg.rotational_stiffness[:] = controller_cfg.Kp.rotation
-            osc_msg.translational_damping[:] = osc_damping(controller_cfg, "translation")
-            osc_msg.rotational_damping[:] = osc_damping(controller_cfg, "rotation")
 
             osc_config = franka_controller_pb2.FrankaOSCControllerConfig()
             osc_config.residual_mass_vec[:] = controller_cfg.residual_mass_vec
@@ -407,8 +405,6 @@ class FrankaInterface:
             osc_msg = franka_controller_pb2.FrankaOSCPoseControllerMessage()
             osc_msg.translational_stiffness[:] = controller_cfg.Kp.translation
             osc_msg.rotational_stiffness[:] = controller_cfg.Kp.rotation
-            osc_msg.translational_damping[:] = osc_damping(controller_cfg, "translation")
-            osc_msg.rotational_damping[:] = osc_damping(controller_cfg, "rotation")
 
             osc_config = franka_controller_pb2.FrankaOSCControllerConfig()
             osc_config.residual_mass_vec[:] = controller_cfg.residual_mass_vec
