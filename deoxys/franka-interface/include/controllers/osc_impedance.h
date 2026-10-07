@@ -11,7 +11,13 @@ namespace controller {
 class OSCImpedanceController : public BaseController {
 protected:
   FrankaOSCPoseControllerMessage control_msg_;
-  Eigen::Matrix<double, 3, 3> Kp_p, Kp_r, Kd_p, Kd_r;
+  // Zero-initialized: ParseMessage writes only the diagonals, and Eigen leaves
+  // fixed-size matrices uninitialized, so otherwise the off-diagonal gains are
+  // whatever memory the controller was allocated on.
+  Eigen::Matrix<double, 3, 3> Kp_p = Eigen::Matrix<double, 3, 3>::Zero();
+  Eigen::Matrix<double, 3, 3> Kp_r = Eigen::Matrix<double, 3, 3>::Zero();
+  Eigen::Matrix<double, 3, 3> Kd_p = Eigen::Matrix<double, 3, 3>::Zero();
+  Eigen::Matrix<double, 3, 3> Kd_r = Eigen::Matrix<double, 3, 3>::Zero();
 
   Eigen::Matrix<double, 7, 1> residual_mass_vec_;
 
