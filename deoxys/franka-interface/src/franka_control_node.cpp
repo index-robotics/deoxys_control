@@ -9,6 +9,7 @@
 #include <string>
 #include <thread>
 
+#include <Eigen/Core>
 #include <franka/exception.h>
 #include <franka/model.h>
 #include <franka/rate_limiting.h>
@@ -566,52 +567,90 @@ int main(int argc, char **argv) {
 
     // Main loop
     global_handler->logger->info("Deoxys starting");
-    while (!global_handler->termination) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
-      // If controller_type changes, exit robot control loop and reinitialize.
-      FrankaControlMessage control_msg;
+    // Catch libfranka errors (reflexes, network drops) here: letting them
+    // unwind past the joinable control_msg_sub thread aborts the process with
+    // "terminate called without an active exception", which hides the
+    // error and drops the buffered log tail.
+    try {
+      while (!global_handler->termination) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        // If controller_type changes, exit robot control loop and reinitialize.
+        FrankaControlMessage control_msg;
 
-      if (control_command.mutex.try_lock()) {
-        controller_type = control_command.controller_type;
-        control_msg = control_command.control_msg;
-        control_command.mutex.unlock();
-      }
-
-      if (global_handler->running) {
-        init_state = robot.readOnce();
-        state_publisher->UpdateNewState(init_state, &model);
-        if (controller_type == ControllerType::NO_CONTROL)
-          continue;
-        // Choose which control callback functions
-        if (controller_type == ControllerType::OSC_POSE ||
-            controller_type == ControllerType::OSC_POSITION ||
-            controller_type == ControllerType::OSC_YAW) {
-          // OSC control callback
-          robot.control(
-              control_callbacks::CreateTorqueFromCartesianSpaceCallback(
-                  global_handler, state_publisher, model, current_state_info,
-                  goal_state_info, policy_rate, traj_rate));
-        } else if (controller_type == ControllerType::JOINT_IMPEDANCE) {
-          // Joint Impedance control callback
-          global_handler->logger->info("Joint impedance callback");
-          robot.control(control_callbacks::CreateTorqueFromJointSpaceCallback(
-              global_handler, state_publisher, model, current_state_info,
-              goal_state_info, policy_rate, traj_rate));
-        } else if (controller_type == ControllerType::JOINT_POSITION) {
-          // Joint Position control callback
-          global_handler->logger->info("Joint position callback");
-          robot.control(control_callbacks::CreateJointPositionCallback(
-              global_handler, state_publisher, model, current_state_info,
-              goal_state_info, policy_rate, traj_rate));
-        } else if (controller_type == ControllerType::CARTESIAN_VELOCITY) {
-          // Cartesian Velocity control callback
-          global_handler->logger->info("Cartesian velocity callback");
-          robot.control(control_callbacks::CreateCartesianVelocitiesCallback(
-              global_handler, state_publisher, model, current_state_info,
-              goal_state_info, policy_rate, traj_rate));
+        if (control_command.mutex.try_lock()) {
+          controller_type = control_command.controller_type;
+          control_msg = control_command.control_msg;
+          control_command.mutex.unlock();
         }
+
+        if (global_handler->running) {
+          init_state = robot.readOnce();
+          state_publisher->UpdateNewState(init_state, &model);
+          if (controller_type == ControllerType::NO_CONTROL)
+            continue;
+          // Choose which control callback functions
+          if (controller_type == ControllerType::OSC_POSE ||
+              controller_type == ControllerType::OSC_POSITION ||
+              controller_type == ControllerType::OSC_YAW) {
+            // OSC control callback
+            robot.control(
+                control_callbacks::CreateTorqueFromCartesianSpaceCallback(
+                    global_handler, state_publisher, model, current_state_info,
+                    goal_state_info, policy_rate, traj_rate));
+          } else if (controller_type == ControllerType::JOINT_IMPEDANCE) {
+            // Joint Impedance control callback
+            global_handler->logger->info("Joint impedance callback");
+            robot.control(control_callbacks::CreateTorqueFromJointSpaceCallback(
+                global_handler, state_publisher, model, current_state_info,
+                goal_state_info, policy_rate, traj_rate));
+          } else if (controller_type == ControllerType::JOINT_POSITION) {
+            // Joint Position control callback
+            global_handler->logger->info("Joint position callback");
+            robot.control(control_callbacks::CreateJointPositionCallback(
+                global_handler, state_publisher, model, current_state_info,
+                goal_state_info, policy_rate, traj_rate));
+          } else if (controller_type == ControllerType::CARTESIAN_VELOCITY) {
+            // Cartesian Velocity control callback
+            global_handler->logger->info("Cartesian velocity callback");
+            robot.control(control_callbacks::CreateCartesianVelocitiesCallback(
+                global_handler, state_publisher, model, current_state_info,
+                goal_state_info, policy_rate, traj_rate));
+          }
+        }
+        global_handler->time = 0.0;
       }
-      global_handler->time = 0.0;
+    } catch (franka::Exception const &e) {
+      auto &logger = global_handler->logger;
+      logger->error("libfranka exception in control loop (controller_type={}): {}",
+                    static_cast<int>(controller_type), e.what());
+      // A ControlException carries the last robot states/commands before the
+      // abort: log the final one so the cause (which limit, which joints) is
+      // visible without a rerun.
+      if (auto *ce = dynamic_cast<franka::ControlException const *>(&e);
+          ce != nullptr && !ce->log.empty()) {
+        const franka::Record &last = ce->log.back();
+        using Vec7 = Eigen::Matrix<double, 7, 1>;
+        std::ostringstream ss;
+        ss << "last_motion_errors="
+           << static_cast<std::string>(last.state.last_motion_errors)
+           << " current_errors="
+           << static_cast<std::string>(last.state.current_errors)
+           << " q=" << Eigen::Map<const Vec7>(last.state.q.data()).transpose()
+           << " dq=" << Eigen::Map<const Vec7>(last.state.dq.data()).transpose()
+           << " tau_J_d="
+           << Eigen::Map<const Vec7>(last.state.tau_J_d.data()).transpose()
+           << " cmd_tau="
+           << Eigen::Map<const Vec7>(last.command.torques.tau_J.data()).transpose()
+           << " O_T_EE_t=" << last.state.O_T_EE[12] << ","
+           << last.state.O_T_EE[13] << "," << last.state.O_T_EE[14]
+           << " (log records: " << ce->log.size() << ")";
+        logger->error("{}", ss.str());
+      }
+      logger->flush();
+      global_handler->termination = true;
+      state_publisher->StopPublishing();
+      control_msg_sub.join();
+      return -1;
     }
     state_publisher->StopPublishing();
 
