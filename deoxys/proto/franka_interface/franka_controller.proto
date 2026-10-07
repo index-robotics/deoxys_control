@@ -92,7 +92,7 @@ message FrankaOSCPoseControllerMessage {
   repeated double rotational_stiffness = 3;
   bool termination = 4;
   FrankaOSCControllerConfig config = 5;
-  // Optional; empty means critical damping.
+  // Optional; empty means 2*sqrt(stiffness).
   repeated double translational_damping = 6;
   repeated double rotational_damping = 7;
 }

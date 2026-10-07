@@ -54,9 +54,7 @@ bool OSCYawImpedanceController::ParseMessage(const FrankaControlMessage &msg) {
       kp_rotation_array.data());
 
   Kd_p << Kp_p.cwiseSqrt() * 2.0;
-  // ori_error is sin(theta/2)*axis, so the effective stiffness is Kp_r/2 and
-  // critical damping is 2*sqrt(Kp_r/2).
-  Kd_r << (Kp_r * 2.0).cwiseSqrt();
+  Kd_r << Kp_r.cwiseSqrt() * 2.0;
   if (control_msg_.translational_damping_size() == 3) {
     Kd_p = Eigen::Map<const Eigen::Vector3d>(
                control_msg_.translational_damping().data())
