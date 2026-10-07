@@ -50,7 +50,19 @@ bool OSCImpedanceController::ParseMessage(const FrankaControlMessage &msg) {
   Kp_r.diagonal() << Eigen::Map<const Eigen::Matrix<double, 3, 1>>(
       kp_rotation_array.data());
   Kd_p << Kp_p.cwiseSqrt() * 2.0;
-  Kd_r << Kp_r.cwiseSqrt() * 2.0;
+  // ori_error is sin(theta/2)*axis, so the effective stiffness is Kp_r/2 and
+  // critical damping is 2*sqrt(Kp_r/2).
+  Kd_r << (Kp_r * 2.0).cwiseSqrt();
+  if (control_msg_.translational_damping_size() == 3) {
+    Kd_p = Eigen::Map<const Eigen::Vector3d>(
+               control_msg_.translational_damping().data())
+               .asDiagonal();
+  }
+  if (control_msg_.rotational_damping_size() == 3) {
+    Kd_r = Eigen::Map<const Eigen::Vector3d>(
+               control_msg_.rotational_damping().data())
+               .asDiagonal();
+  }
 
   static_q_task_ << 0.09017809387254755, -0.9824203501652151,
       0.030509718397568178, -2.694229634937343, 0.057700675144720104,
