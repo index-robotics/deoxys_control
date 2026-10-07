@@ -51,6 +51,16 @@ bool OSCImpedanceController::ParseMessage(const FrankaControlMessage &msg) {
       kp_rotation_array.data());
   Kd_p << Kp_p.cwiseSqrt() * 2.0;
   Kd_r << Kp_r.cwiseSqrt() * 2.0;
+  if (control_msg_.translational_damping_size() == 3) {
+    Kd_p = Eigen::Map<const Eigen::Vector3d>(
+               control_msg_.translational_damping().data())
+               .asDiagonal();
+  }
+  if (control_msg_.rotational_damping_size() == 3) {
+    Kd_r = Eigen::Map<const Eigen::Vector3d>(
+               control_msg_.rotational_damping().data())
+               .asDiagonal();
+  }
 
   static_q_task_ << 0.09017809387254755, -0.9824203501652151,
       0.030509718397568178, -2.694229634937343, 0.057700675144720104,
