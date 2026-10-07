@@ -199,7 +199,7 @@ def verify_controller_config(controller_cfg: dict, use_default=True):
             logger.warning("field joint_kp not manually specified!!!")
             field_missing = True
         if not check_attr(controller_cfg, "joint_kd"):
-            controller_cfg.joint_kd = 2 * np.sqrt(controller_cfg.joint_kp).tolist()
+            controller_cfg.joint_kd = (2 * np.sqrt(controller_cfg.joint_kp)).tolist()
             logger.debug(
                 "field joint_kd not manually specified, switch to the critical damping formula."
             )
