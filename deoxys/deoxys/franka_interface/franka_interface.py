@@ -31,7 +31,7 @@ def _feedforward_pair(feedforward, n, kind):
 
 
 def osc_damping(controller_cfg, axis) -> list:
-    """Kd.<axis> as 3 values; [] lets the server default to critical damping."""
+    """Kd.<axis> as 3 values; [] lets the server default to 2*sqrt(Kp)."""
     if not check_attr(controller_cfg, "Kd") or not check_attr(controller_cfg.Kd, axis):
         return []
     kd = controller_cfg.Kd[axis]
