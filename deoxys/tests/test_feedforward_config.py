@@ -67,3 +67,27 @@ def test_missing_required_field_still_raises_without_defaults():
     )
     with pytest.raises(ValueError):
         verify_controller_config(cfg, use_default=False)
+
+
+@pytest.mark.parametrize("block", [None, {"enable": True}])
+def test_osc_pose_feedforward_cfg_defaults(block):
+    """OSC_POSE gets the same silent fill: absent or partial blocks get defaults."""
+    cfg = EasyDict(
+        {
+            "controller_type": "OSC_POSE",
+            "Kp": {"translation": [450.0] * 3, "rotation": [250.0] * 3},
+            "traj_interpolator_cfg": {
+                "traj_interpolator_type": "LINEAR_POSE",
+                "time_fraction": 1.0,
+            },
+            "residual_mass_vec": [0.0, 0.0, 0.0, 0.0, 0.1, 0.5, 0.5],
+            "action_scale": {"translation": 1.0, "rotation": 1.0},
+        }
+    )
+    if block is not None:
+        cfg["feedforward_cfg"] = EasyDict(block)
+    verify_controller_config(cfg, use_default=False)
+    assert cfg.feedforward_cfg.enable is (block is not None)
+    assert cfg.feedforward_cfg.vel_scale == 1.0
+    # Acceleration FF stays off unless asked for, even with velocity FF on.
+    assert cfg.feedforward_cfg.acc_scale == 0.0
