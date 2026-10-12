@@ -1,6 +1,7 @@
 #include "franka_controller.pb.h"
 #include "franka_robot_state.pb.h"
 #include <atomic>
+#include <cmath>
 #include <chrono>
 #include <iostream>
 #include <string>
@@ -67,33 +68,52 @@ bool OSCImpedanceController::ParseMessage(const FrankaControlMessage &msg) {
   residual_mass_vec_ << Eigen::Map<const Eigen::Matrix<double, 7, 1>>(
       residual_mass_array.data());
 
-  // Feedforward (optional). Absent field or malformed arrays degrade to the
-  // exact baseline law rather than injecting garbage torque.
-  ff_enable_ = false;
-  ff_vel_scale_ = 0.;
-  ff_acc_scale_ = 0.;
-  if (control_msg_.has_feedforward()) {
+  // Feedforward (optional). Anything malformed degrades to the exact
+  // baseline law. Computed into locals and published once: Step() reads these
+  // on the 1 kHz thread.
+  bool ff_enable = false;
+  double ff_vel_scale = 0., ff_acc_scale = 0.;
+  if (control_msg_.has_feedforward() && control_msg_.feedforward().ff_enable()) {
     const auto &ff = control_msg_.feedforward();
-    if (ff.ff_enable() && ff.v_d_size() == 6 && ff.a_d_size() == 6) {
-      ff_enable_ = true;
-      ff_vel_scale_ = ff.ff_vel_scale();
-      ff_acc_scale_ = ff.ff_acc_scale();
-    } else if (ff.ff_enable()) {
-      // Feedforward was requested but v_d/a_d are not both length 6. We fall
-      // back to the baseline law rather than inject garbage torque -- but say
-      // so loudly (once), so an operator who asked for FF and silently got
-      // baseline isn't left guessing. Warn once to avoid spamming the 20 Hz
-      // message loop.
-      static bool warned = false;
-      if (!warned) {
-        std::cerr << "[OSCImpedanceController] feedforward requested but v_d/"
-                     "a_d are not both length 6 (got "
-                  << ff.v_d_size() << "/" << ff.a_d_size()
-                  << "); running baseline OSC_POSE." << std::endl;
-        warned = true;
+    auto all_finite = [](const google::protobuf::RepeatedField<double> &xs) {
+      for (double x : xs) {
+        if (!std::isfinite(x)) {
+          return false;
+        }
+      }
+      return true;
+    };
+    auto valid_scale = [](double s) { return s >= 0. && s <= 1.; };
+    const char *reject = nullptr;
+    if (ff.v_d_size() != 6 || ff.a_d_size() != 6) {
+      reject = "v_d/a_d are not both length 6";
+    } else if (!all_finite(ff.v_d()) || !all_finite(ff.a_d())) {
+      reject = "v_d/a_d are not finite";
+    } else if (!valid_scale(ff.ff_vel_scale()) ||
+               !valid_scale(ff.ff_acc_scale())) {
+      reject = "vel_scale/acc_scale are outside [0, 1]";
+    } else if (msg.traj_interpolator_time_fraction() != 1.0) {
+      // Below 1 the reference stops before the segment ends while v_d keeps
+      // pushing, settling ~Kd/Kp*v_d past the goal.
+      reject = "traj_interpolator_time_fraction is not 1";
+    }
+    if (reject == nullptr) {
+      ff_enable = true;
+      ff_vel_scale = ff.ff_vel_scale();
+      ff_acc_scale = ff.ff_acc_scale();
+    } else {
+      // Warn when the reason changes, not at the policy rate.
+      static const char *last_reject = nullptr;
+      if (reject != last_reject) {
+        std::cerr << "[OSCImpedanceController] feedforward requested but "
+                  << reject << "; running baseline OSC_POSE." << std::endl;
+        last_reject = reject;
       }
     }
   }
+  ff_vel_scale_.store(ff_vel_scale);
+  ff_acc_scale_.store(ff_acc_scale);
+  ff_enable_.store(ff_enable);
 
   this->state_estimator_ptr_->ParseMessage(msg.state_estimator_msg());
 
@@ -139,7 +159,7 @@ void OSCImpedanceController::ComputeGoal(
   goal_state_info->twist_rot_EE_in_base_frame.setZero();
   goal_state_info->accel_trans_EE_in_base_frame.setZero();
   goal_state_info->accel_rot_EE_in_base_frame.setZero();
-  if (ff_enable_) {
+  if (ff_enable_.load()) {
     for (int i = 0; i < 3; i++) {
       goal_state_info->twist_trans_EE_in_base_frame[i] =
           control_msg_.feedforward().v_d(i);
@@ -275,16 +295,18 @@ std::array<double, 7> OSCImpedanceController::Step(
                jacobian_ori.transpose() *
                    (Lambda_ori *
                     (Kp_r * ori_error - Kd_r * (jacobian_ori * current_dq)));
-  if (ff_enable_) {
+  if (ff_enable_.load()) {
+    const double ff_vel_scale = ff_vel_scale_.load();
+    const double ff_acc_scale = ff_acc_scale_.load();
     // Velocity feedforward collapses the cruise lag (damping acts on the twist
     // error v_d - J dq); Lambda * a_d supplies the acceleration force from the
     // task-space inertia. Gravity stays libfranka-implicit.
     tau_d += jacobian_pos.transpose() *
-                 (Lambda_pos * (Kd_p * (ff_vel_scale_ * desired_v) +
-                                ff_acc_scale_ * desired_a)) +
+                 (Lambda_pos * (Kd_p * (ff_vel_scale * desired_v) +
+                                ff_acc_scale * desired_a)) +
              jacobian_ori.transpose() *
-                 (Lambda_ori * (Kd_r * (ff_vel_scale_ * desired_w) +
-                                ff_acc_scale_ * desired_alpha));
+                 (Lambda_ori * (Kd_r * (ff_vel_scale * desired_w) +
+                                ff_acc_scale * desired_alpha));
   }
 
   // nullspace control

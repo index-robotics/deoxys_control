@@ -91,3 +91,16 @@ def test_osc_pose_feedforward_cfg_defaults(block):
     assert cfg.feedforward_cfg.vel_scale == 1.0
     # Acceleration FF stays off unless asked for, even with velocity FF on.
     assert cfg.feedforward_cfg.acc_scale == 0.0
+
+
+def test_osc_pose_feedforward_rejects_short_time_fraction():
+    """Below 1 the reference stops early while v_d keeps pushing: overshoot past the goal."""
+    cfg = EasyDict(
+        {
+            "controller_type": "OSC_POSE",
+            "traj_interpolator_cfg": {"traj_interpolator_type": "LINEAR_POSE", "time_fraction": 0.3},
+            "feedforward_cfg": {"enable": True},
+        }
+    )
+    with pytest.raises(ValueError, match="time_fraction"):
+        verify_controller_config(cfg)

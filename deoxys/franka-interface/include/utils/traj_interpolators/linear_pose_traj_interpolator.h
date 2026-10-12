@@ -18,29 +18,12 @@ private:
   Eigen::Quaterniond last_q_t_;
   Eigen::Quaterniond prev_q_goal_;
 
-  // Feedforward channels (desired linear / angular velocity + acceleration),
-  // segment-chained and lerped exactly like p_. Zero-initialized: a pose-only
-  // Reset followed by the feedforward GetNextStep must read zero, not garbage,
-  // into the feedforward torque.
-  Eigen::Vector3d v_start_ = Eigen::Vector3d::Zero();
-  Eigen::Vector3d v_goal_ = Eigen::Vector3d::Zero();
-  Eigen::Vector3d last_v_t_ = Eigen::Vector3d::Zero();
-  Eigen::Vector3d prev_v_goal_ = Eigen::Vector3d::Zero();
-
-  Eigen::Vector3d w_start_ = Eigen::Vector3d::Zero();
-  Eigen::Vector3d w_goal_ = Eigen::Vector3d::Zero();
-  Eigen::Vector3d last_w_t_ = Eigen::Vector3d::Zero();
-  Eigen::Vector3d prev_w_goal_ = Eigen::Vector3d::Zero();
-
-  Eigen::Vector3d a_start_ = Eigen::Vector3d::Zero();
-  Eigen::Vector3d a_goal_ = Eigen::Vector3d::Zero();
-  Eigen::Vector3d last_a_t_ = Eigen::Vector3d::Zero();
-  Eigen::Vector3d prev_a_goal_ = Eigen::Vector3d::Zero();
-
-  Eigen::Vector3d alpha_start_ = Eigen::Vector3d::Zero();
-  Eigen::Vector3d alpha_goal_ = Eigen::Vector3d::Zero();
-  Eigen::Vector3d last_alpha_t_ = Eigen::Vector3d::Zero();
-  Eigen::Vector3d prev_alpha_goal_ = Eigen::Vector3d::Zero();
+  // Feedforward [v; w; a; alpha], segment-chained and lerped like p_.
+  // Zero-initialized so a pose-only Reset yields zero feedforward.
+  using FF = Eigen::Matrix<double, 12, 1>;
+  FF ff_start_ = FF::Zero();
+  FF ff_goal_ = FF::Zero();
+  FF last_ff_t_ = FF::Zero();
 
   double dt_;
   double last_time_;
@@ -119,8 +102,8 @@ public:
     q_t = last_q_t_;
   };
 
-  // Feedforward-aware Reset: segment-chain v/w/a/alpha like p (first goal =>
-  // zero start, else start = previous goal), then delegate the pose setup.
+  // Feedforward-aware Reset: the new segment's feedforward ramps from the
+  // previous goal (zero on the first goal), then the pose setup is delegated.
   inline void Reset(const double &time_sec, const Eigen::Vector3d &p_start,
                     const Eigen::Quaterniond &q_start,
                     const Eigen::Vector3d &p_goal,
@@ -132,68 +115,42 @@ public:
                     const int &rate,
                     const double &traj_interpolator_time_fraction) {
     if (first_goal_) {
-      v_start_.setZero();
-      w_start_.setZero();
-      a_start_.setZero();
-      alpha_start_.setZero();
-      prev_v_goal_.setZero();
-      prev_w_goal_.setZero();
-      prev_a_goal_.setZero();
-      prev_alpha_goal_.setZero();
+      ff_start_.setZero();
     } else {
-      prev_v_goal_ = v_goal_;
-      prev_w_goal_ = w_goal_;
-      prev_a_goal_ = a_goal_;
-      prev_alpha_goal_ = alpha_goal_;
-      v_start_ = prev_v_goal_;
-      w_start_ = prev_w_goal_;
-      a_start_ = prev_a_goal_;
-      alpha_start_ = prev_alpha_goal_;
+      ff_start_ = ff_goal_;
     }
-    v_goal_ = v_goal;
-    w_goal_ = w_goal;
-    a_goal_ = a_goal;
-    alpha_goal_ = alpha_goal;
-    // Delegates to the 8-arg Reset above, which flips first_goal_ and chains p
-    // consistently with the branch just taken.
+    ff_goal_ << v_goal, w_goal, a_goal, alpha_goal;
     Reset(time_sec, p_start, q_start, p_goal, q_goal, policy_rate, rate,
           traj_interpolator_time_fraction);
   };
 
-  // Feedforward-aware step: lerp all channels on the same throttled t.
-  // Lerp (not ZOH) keeps per-ms feedforward torque changes small instead of
-  // steps that limitRate would smear into a staircase.
+  // A new control session starts from rest: ramp the feedforward up from zero
+  // instead of from a previous session's (or the same message's) goal.
+  inline void ResetFeedforwardStart() {
+    ff_start_.setZero();
+    last_ff_t_.setZero();
+  };
+
+  // Feedforward-aware step: lerp (not ZOH) on the same throttled t, so per-ms
+  // torque changes stay small instead of staircasing through limitRate.
   inline void GetNextStep(const double &time_sec, Eigen::Vector3d &p_t,
                           Eigen::Quaterniond &q_t, Eigen::Vector3d &v_t,
                           Eigen::Vector3d &w_t, Eigen::Vector3d &a_t,
                           Eigen::Vector3d &alpha_t) {
     if (!start_) {
-      start_time_ = time_sec;
-      last_p_t_ = p_start_;
-      last_q_t_ = q_start_;
-      last_v_t_ = v_start_;
-      last_w_t_ = w_start_;
-      last_a_t_ = a_start_;
-      last_alpha_t_ = alpha_start_;
-      start_ = true;
+      last_ff_t_ = ff_start_;
     }
-    if (last_time_ + dt_ <= time_sec) {
+    const bool stepped = last_time_ + dt_ <= time_sec;
+    GetNextStep(time_sec, p_t, q_t);
+    if (stepped) {
       double t =
           std::min(std::max((time_sec - start_time_) / max_time_, 0.), 1.);
-      last_p_t_ = p_start_ + t * (p_goal_ - p_start_);
-      last_q_t_ = q_start_.slerp(t, q_goal_);
-      last_v_t_ = v_start_ + t * (v_goal_ - v_start_);
-      last_w_t_ = w_start_ + t * (w_goal_ - w_start_);
-      last_a_t_ = a_start_ + t * (a_goal_ - a_start_);
-      last_alpha_t_ = alpha_start_ + t * (alpha_goal_ - alpha_start_);
-      last_time_ = time_sec;
+      last_ff_t_ = ff_start_ + t * (ff_goal_ - ff_start_);
     }
-    p_t = last_p_t_;
-    q_t = last_q_t_;
-    v_t = last_v_t_;
-    w_t = last_w_t_;
-    a_t = last_a_t_;
-    alpha_t = last_alpha_t_;
+    v_t = last_ff_t_.segment<3>(0);
+    w_t = last_ff_t_.segment<3>(3);
+    a_t = last_ff_t_.segment<3>(6);
+    alpha_t = last_ff_t_.segment<3>(9);
   };
 };
 } // namespace traj_utils

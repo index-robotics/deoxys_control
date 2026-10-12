@@ -18,6 +18,18 @@ from deoxys.utils.yaml_config import YamlConfig
 logger = logging.getLogger(__name__)
 
 
+def _feedforward_pair(feedforward, n, kind):
+    """(vel, acc) as length-n finite arrays; C++ would otherwise silently run baseline."""
+    vel, acc = (np.asarray(x, dtype=float) for x in feedforward)
+    if vel.shape != (n,) or acc.shape != (n,):
+        raise ValueError(
+            f"{kind} feedforward must be two length-{n} arrays, got {vel.shape}/{acc.shape}"
+        )
+    if not (np.isfinite(vel).all() and np.isfinite(acc).all()):
+        raise ValueError(f"{kind} feedforward is not finite: {vel} / {acc}")
+    return vel, acc
+
+
 def action_to_osc_pose_goal(action, is_delta=True) -> franka_controller_pb2.Goal:
     goal = franka_controller_pb2.Goal()
     goal.is_delta = is_delta
@@ -296,21 +308,12 @@ class FrankaInterface:
             # to a client without this feature.
             ff_cfg = controller_cfg.feedforward_cfg
             if ff_cfg.enable:
-                v_d, a_d = (
-                    cartesian_feedforward
-                    if cartesian_feedforward is not None
-                    else (np.zeros(6), np.zeros(6))
-                )
-                v_d = np.asarray(v_d, dtype=float)
-                a_d = np.asarray(a_d, dtype=float)
-                # Surface a length mistake here, at the call site. The C++
-                # controller silently drops malformed feedforward and runs
-                # baseline, so an operator would otherwise get position-only
-                # tracking with no error.
-                assert v_d.shape == (6,) and a_d.shape == (6,), (
-                    f"cartesian feedforward v_d/a_d must be length 6, got "
-                    f"{v_d.shape}/{a_d.shape}"
-                )
+                if cartesian_feedforward is None:
+                    # Zero v_d/a_d would run the baseline law while FF reads as on.
+                    raise ValueError(
+                        "feedforward_cfg.enable is set but no cartesian_feedforward was passed"
+                    )
+                v_d, a_d = _feedforward_pair(cartesian_feedforward, 6, "cartesian")
                 ff = osc_msg.feedforward
                 ff.ff_enable = True
                 ff.ff_vel_scale = ff_cfg.vel_scale
@@ -471,20 +474,12 @@ class FrankaInterface:
             # to a client without this feature.
             ff_cfg = controller_cfg.feedforward_cfg
             if ff_cfg.enable:
-                dq_d, ddq_d = (
+                dq_d, ddq_d = _feedforward_pair(
                     joint_feedforward
                     if joint_feedforward is not None
-                    else (np.zeros(7), np.zeros(7))
-                )
-                dq_d = np.asarray(dq_d, dtype=float)
-                ddq_d = np.asarray(ddq_d, dtype=float)
-                # Surface a length mistake here, at the call site. The C++
-                # controller silently drops malformed feedforward and runs
-                # baseline, so an operator would otherwise get position-only
-                # tracking with no error.
-                assert dq_d.shape == (7,) and ddq_d.shape == (7,), (
-                    f"joint feedforward dq_d/ddq_d must be length 7, got "
-                    f"{dq_d.shape}/{ddq_d.shape}"
+                    else (np.zeros(7), np.zeros(7)),
+                    7,
+                    "joint",
                 )
                 ff = joint_impedance_msg.feedforward
                 ff.ff_enable = True

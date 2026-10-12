@@ -48,6 +48,9 @@ public:
     alpha_t.setZero();
   };
 
+  // Called at control-session start; feedforward interpolators ramp from zero.
+  inline virtual void ResetFeedforwardStart(){};
+
   // For cartesian velocity
   inline virtual void Reset(const double &time_sec, 
                             const Eigen::Vector3d &twist_trans_start,

@@ -54,6 +54,7 @@ CreateTorqueFromCartesianSpaceCallback(
           goal_state_info->accel_trans_EE_in_base_frame,
           goal_state_info->accel_rot_EE_in_base_frame, policy_rate, traj_rate,
           global_handler->traj_interpolator_time_fraction);
+      global_handler->traj_interpolator_ptr->ResetFeedforwardStart();
     }
     global_handler->time += period.toSec();
 
