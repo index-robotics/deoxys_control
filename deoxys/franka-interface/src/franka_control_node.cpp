@@ -515,7 +515,10 @@ int main(int argc, char **argv) {
             traj_interpolator_type = control_command.traj_interpolator_type;
           }
 
-          global_handler->controller_ptr->ParseMessage(control_msg);
+          if (!global_handler->controller_ptr->ParseMessage(control_msg)) {
+            global_handler->logger->error(
+                "Rejected control message (unpack failed or invalid gains)");
+          }
 
           global_handler->controller_ptr->ComputeGoal(current_state_info,
                                                       goal_state_info);

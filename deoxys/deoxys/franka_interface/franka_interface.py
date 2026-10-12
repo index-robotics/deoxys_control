@@ -30,16 +30,6 @@ def _feedforward_pair(feedforward, n, kind):
     return vel, acc
 
 
-def osc_damping(controller_cfg, axis) -> list:
-    """Kd.<axis> as 3 values; [] lets the server default to 2*sqrt(Kp)."""
-    if not check_attr(controller_cfg, "Kd") or not check_attr(controller_cfg.Kd, axis):
-        return []
-    kd = controller_cfg.Kd[axis]
-    kd = [float(kd)] * 3 if isinstance(kd, (int, float)) else [float(k) for k in kd]
-    assert len(kd) == 3, f"Kd.{axis} must be a scalar or 3 values, got {kd}"
-    return kd
-
-
 def action_to_osc_pose_goal(action, is_delta=True) -> franka_controller_pb2.Goal:
     goal = franka_controller_pb2.Goal()
     goal.is_delta = is_delta
@@ -307,8 +297,13 @@ class FrankaInterface:
             osc_msg = franka_controller_pb2.FrankaOSCPoseControllerMessage()
             osc_msg.translational_stiffness[:] = controller_cfg.Kp.translation
             osc_msg.rotational_stiffness[:] = controller_cfg.Kp.rotation
-            osc_msg.translational_damping[:] = osc_damping(controller_cfg, "translation")
-            osc_msg.rotational_damping[:] = osc_damping(controller_cfg, "rotation")
+            if check_attr(controller_cfg, "Kd"):
+                for axis, field in (
+                    ("translation", osc_msg.translational_damping),
+                    ("rotation", osc_msg.rotational_damping),
+                ):
+                    if check_attr(controller_cfg.Kd, axis):
+                        field[:] = controller_cfg.Kd[axis]
 
             osc_config = franka_controller_pb2.FrankaOSCControllerConfig()
 
