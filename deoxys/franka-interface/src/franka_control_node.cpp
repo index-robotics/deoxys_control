@@ -523,12 +523,20 @@ int main(int argc, char **argv) {
           case TrajInterpolatorType::LINEAR_POSE:
           case TrajInterpolatorType::LINEAR_POSITION:
           case TrajInterpolatorType::MIN_JERK_POSE:
+            // 12-arg pose Reset carries the feedforward goal derivatives. Safe
+            // for all three pose interpolators: LINEAR_POSITION / MIN_JERK_POSE
+            // fall back to the base default (pose-only, zero feedforward), and
+            // the derivatives are zeroed by OSC_POSE unless feedforward is on.
             global_handler->traj_interpolator_ptr->Reset(
                 global_handler->time, current_state_info->pos_EE_in_base_frame,
                 current_state_info->quat_EE_in_base_frame,
                 goal_state_info->pos_EE_in_base_frame,
-                goal_state_info->quat_EE_in_base_frame, policy_rate, traj_rate,
-                global_handler->traj_interpolator_time_fraction);
+                goal_state_info->quat_EE_in_base_frame,
+                goal_state_info->twist_trans_EE_in_base_frame,
+                goal_state_info->twist_rot_EE_in_base_frame,
+                goal_state_info->accel_trans_EE_in_base_frame,
+                goal_state_info->accel_rot_EE_in_base_frame, policy_rate,
+                traj_rate, global_handler->traj_interpolator_time_fraction);
             break;
           case TrajInterpolatorType::SMOOTH_JOINT_POSITION:
           case TrajInterpolatorType::MIN_JERK_JOINT_POSITION:

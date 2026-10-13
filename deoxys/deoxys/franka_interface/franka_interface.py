@@ -18,6 +18,18 @@ from deoxys.utils.yaml_config import YamlConfig
 logger = logging.getLogger(__name__)
 
 
+def _feedforward_pair(feedforward, n, kind):
+    """(vel, acc) as length-n finite arrays; C++ would otherwise silently run baseline."""
+    vel, acc = (np.asarray(x, dtype=float) for x in feedforward)
+    if vel.shape != (n,) or acc.shape != (n,):
+        raise ValueError(
+            f"{kind} feedforward must be two length-{n} arrays, got {vel.shape}/{acc.shape}"
+        )
+    if not (np.isfinite(vel).all() and np.isfinite(acc).all()):
+        raise ValueError(f"{kind} feedforward is not finite: {vel} / {acc}")
+    return vel, acc
+
+
 def action_to_osc_pose_goal(action, is_delta=True) -> franka_controller_pb2.Goal:
     goal = franka_controller_pb2.Goal()
     goal.is_delta = is_delta
@@ -229,6 +241,7 @@ class FrankaInterface:
         termination: bool = False,
         *,
         joint_feedforward: Union[Tuple, None] = None,
+        cartesian_feedforward: Union[Tuple, None] = None,
     ):
         """A function that controls every step on the policy level.
 
@@ -241,6 +254,10 @@ class FrankaInterface:
                 velocity / acceleration (length-7 each) for the JOINT_IMPEDANCE
                 computed-torque feedforward. Only consulted when the controller
                 config enables feedforward; ignored otherwise.
+            cartesian_feedforward (tuple, optional): ``(v_d, a_d)`` desired EE
+                twist / acceleration ``[linear(3), angular(3)]`` (length-6 each,
+                base frame) for the OSC_POSE feedforward. Only consulted when the
+                controller config enables feedforward; ignored otherwise.
         """
         action = np.array(action)
         if self.last_time == None:
@@ -285,6 +302,25 @@ class FrankaInterface:
 
             osc_config.residual_mass_vec[:] = controller_cfg.residual_mass_vec
             osc_msg.config.CopyFrom(osc_config)
+
+            # Velocity feedforward. Only touch the message field when the
+            # config enables it, so the disabled path serializes byte-identical
+            # to a client without this feature.
+            ff_cfg = controller_cfg.feedforward_cfg
+            if ff_cfg.enable:
+                if cartesian_feedforward is None:
+                    # Zero v_d/a_d would run the baseline law while FF reads as on.
+                    raise ValueError(
+                        "feedforward_cfg.enable is set but no cartesian_feedforward was passed"
+                    )
+                v_d, a_d = _feedforward_pair(cartesian_feedforward, 6, "cartesian")
+                ff = osc_msg.feedforward
+                ff.ff_enable = True
+                ff.ff_vel_scale = ff_cfg.vel_scale
+                ff.ff_acc_scale = ff_cfg.acc_scale
+                ff.v_d[:] = v_d.tolist()
+                ff.a_d[:] = a_d.tolist()
+
             action[0:3] *= controller_cfg.action_scale.translation
             action[3 : self.last_gripper_dim] *= controller_cfg.action_scale.rotation
 
@@ -438,20 +474,12 @@ class FrankaInterface:
             # to a client without this feature.
             ff_cfg = controller_cfg.feedforward_cfg
             if ff_cfg.enable:
-                dq_d, ddq_d = (
+                dq_d, ddq_d = _feedforward_pair(
                     joint_feedforward
                     if joint_feedforward is not None
-                    else (np.zeros(7), np.zeros(7))
-                )
-                dq_d = np.asarray(dq_d, dtype=float)
-                ddq_d = np.asarray(ddq_d, dtype=float)
-                # Surface a length mistake here, at the call site. The C++
-                # controller silently drops malformed feedforward and runs
-                # baseline, so an operator would otherwise get position-only
-                # tracking with no error.
-                assert dq_d.shape == (7,) and ddq_d.shape == (7,), (
-                    f"joint feedforward dq_d/ddq_d must be length 7, got "
-                    f"{dq_d.shape}/{ddq_d.shape}"
+                    else (np.zeros(7), np.zeros(7)),
+                    7,
+                    "joint",
                 )
                 ff = joint_impedance_msg.feedforward
                 ff.ff_enable = True

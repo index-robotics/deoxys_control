@@ -115,6 +115,17 @@ def check_attr(cfg, attr_key):
     return hasattr(cfg, attr_key) and cfg[attr_key] is not None
 
 
+def _fill_defaults(cfg, key, defaults: dict):
+    """Fill cfg[key] per sub-key, so a partial block (e.g. only `enable: true`) works."""
+    if not check_attr(cfg, key):
+        cfg[key] = dict(defaults)
+    else:
+        for sub_key, default in defaults.items():
+            if not check_attr(cfg[key], sub_key):
+                cfg[key][sub_key] = default
+    return cfg[key]
+
+
 def verify_controller_config(controller_cfg: dict, use_default=True):
     """Verify if the controller configuration has defined all necessary configs.
 
@@ -185,6 +196,32 @@ def verify_controller_config(controller_cfg: dict, use_default=True):
                 controller_cfg["action_scale"]["rotation"] = 1.0
                 logger.warning("field rotation in action_scale not specified!!!")
                 field_missing = True
+        # Velocity feedforward, OSC_POSE only. Absence is the normal case
+        # (baseline law), so default it silently and do NOT flag field_missing.
+        # acc_scale defaults to 0 (unlike JOINT_IMPEDANCE): a_d from a policy
+        # chunk is a noisy second difference, so acceleration FF is opt-in.
+        if controller_cfg["controller_type"] == "OSC_POSE":
+            ff_cfg = _fill_defaults(
+                controller_cfg,
+                "feedforward_cfg",
+                {"enable": False, "vel_scale": 1.0, "acc_scale": 0.0},
+            )
+            if ff_cfg["enable"]:
+                for scale in ("vel_scale", "acc_scale"):
+                    if not 0.0 <= ff_cfg[scale] <= 1.0:
+                        raise ValueError(
+                            f"feedforward_cfg.{scale} must be in [0, 1], got {ff_cfg[scale]}"
+                        )
+                # Below 1 the reference stops before the segment ends while v_d
+                # keeps pushing, settling ~Kd/Kp*v_d past the goal.
+                if controller_cfg["traj_interpolator_cfg"]["time_fraction"] != 1.0:
+                    raise ValueError(
+                        "OSC_POSE feedforward requires traj_interpolator_cfg.time_fraction: 1.0"
+                    )
+        elif check_attr(controller_cfg, "feedforward_cfg"):
+            logger.warning(
+                f"feedforward_cfg is only applied by OSC_POSE; ignored for {controller_cfg['controller_type']}"
+            )
 
     elif controller_cfg["controller_type"] == "JOINT_IMPEDANCE":
         if not check_attr(controller_cfg, "traj_interpolator_cfg"):
@@ -210,18 +247,11 @@ def verify_controller_config(controller_cfg: dict, use_default=True):
         # Fill per sub-key (like Kp above) so a partial hand-written block during
         # bring-up (e.g. only `enable: true`) still gets the scale/coriolis
         # defaults instead of AttributeError-ing in control().
-        ff_defaults = {
-            "enable": False,
-            "vel_scale": 1.0,
-            "acc_scale": 1.0,
-            "use_coriolis": False,
-        }
-        if not check_attr(controller_cfg, "feedforward_cfg"):
-            controller_cfg["feedforward_cfg"] = ff_defaults
-        else:
-            for ff_key, ff_default in ff_defaults.items():
-                if not check_attr(controller_cfg["feedforward_cfg"], ff_key):
-                    controller_cfg["feedforward_cfg"][ff_key] = ff_default
+        _fill_defaults(
+            controller_cfg,
+            "feedforward_cfg",
+            {"enable": False, "vel_scale": 1.0, "acc_scale": 1.0, "use_coriolis": False},
+        )
 
     elif controller_cfg["controller_type"] == "JOINT_POSITION":
         if not check_attr(controller_cfg, "traj_interpolator_cfg"):
