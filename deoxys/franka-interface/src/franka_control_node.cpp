@@ -455,6 +455,15 @@ int main(int argc, char **argv) {
             state_estimator_type = control_command.state_estimator_type;
           }
 
+          // A rejected message is dropped whole: its interpolator is never
+          // swapped in, its goal never applied, and a session whose first
+          // message is rejected never starts.
+          if (!global_handler->controller_ptr->ParseMessage(control_msg)) {
+            global_handler->logger->error(
+                "Rejected control message (unpack failed or invalid gains)");
+            continue;
+          }
+
           global_handler->start = true;
           if (traj_interpolator_type !=
               control_command.traj_interpolator_type) {
@@ -507,14 +516,6 @@ int main(int argc, char **argv) {
             }
 
             traj_interpolator_type = control_command.traj_interpolator_type;
-          }
-
-          // A rejected message is dropped whole: its goal is never applied,
-          // and a session whose first message is rejected never starts.
-          if (!global_handler->controller_ptr->ParseMessage(control_msg)) {
-            global_handler->logger->error(
-                "Rejected control message (unpack failed or invalid gains)");
-            continue;
           }
 
           global_handler->controller_ptr->ComputeGoal(current_state_info,
