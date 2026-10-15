@@ -37,21 +37,42 @@ bool OSCImpedanceController::ParseMessage(const FrankaControlMessage &msg) {
   if (!msg.control_msg().UnpackTo(&control_msg_)) {
     return false;
   }
-  std::vector<double> kp_position_array, kp_rotation_array;
-  kp_position_array.reserve(3);
-  kp_rotation_array.reserve(3);
-  for (double kp_i : control_msg_.translational_stiffness()) {
-    kp_position_array.push_back(kp_i);
+  // Reject before writing any gain: a short stiffness vector is an
+  // out-of-bounds read, and a negative or non-finite gain injects energy.
+  auto valid_gains = [](const google::protobuf::RepeatedField<double> &gains,
+                        bool optional) {
+    if (gains.size() != 3 && !(optional && gains.empty())) {
+      return false;
+    }
+    for (double g : gains) {
+      if (!std::isfinite(g) || g < 0.0) {
+        return false;
+      }
+    }
+    return true;
+  };
+  if (!valid_gains(control_msg_.translational_stiffness(), false) ||
+      !valid_gains(control_msg_.rotational_stiffness(), false) ||
+      !valid_gains(control_msg_.translational_damping(), true) ||
+      !valid_gains(control_msg_.rotational_damping(), true)) {
+    return false;
   }
-  for (double kp_i : control_msg_.rotational_stiffness()) {
-    kp_rotation_array.push_back(kp_i);
-  }
-  Kp_p.diagonal() << Eigen::Map<const Eigen::Matrix<double, 3, 1>>(
-      kp_position_array.data());
-  Kp_r.diagonal() << Eigen::Map<const Eigen::Matrix<double, 3, 1>>(
-      kp_rotation_array.data());
+  Kp_p.diagonal() = Eigen::Map<const Eigen::Vector3d>(
+      control_msg_.translational_stiffness().data());
+  Kp_r.diagonal() = Eigen::Map<const Eigen::Vector3d>(
+      control_msg_.rotational_stiffness().data());
   Kd_p << Kp_p.cwiseSqrt() * 2.0;
   Kd_r << Kp_r.cwiseSqrt() * 2.0;
+  if (!control_msg_.translational_damping().empty()) {
+    Kd_p = Eigen::Map<const Eigen::Vector3d>(
+               control_msg_.translational_damping().data())
+               .asDiagonal();
+  }
+  if (!control_msg_.rotational_damping().empty()) {
+    Kd_r = Eigen::Map<const Eigen::Vector3d>(
+               control_msg_.rotational_damping().data())
+               .asDiagonal();
+  }
 
   static_q_task_ << 0.09017809387254755, -0.9824203501652151,
       0.030509718397568178, -2.694229634937343, 0.057700675144720104,

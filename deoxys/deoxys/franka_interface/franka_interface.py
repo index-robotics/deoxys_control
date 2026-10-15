@@ -12,7 +12,7 @@ import deoxys.proto.franka_interface.franka_controller_pb2 as franka_controller_
 import deoxys.proto.franka_interface.franka_robot_state_pb2 as franka_robot_state_pb2
 from deoxys.franka_interface.visualizer import visualizer_factory
 from deoxys.utils import transform_utils
-from deoxys.utils.config_utils import verify_controller_config
+from deoxys.utils.config_utils import check_attr, verify_controller_config
 from deoxys.utils.yaml_config import YamlConfig
 
 logger = logging.getLogger(__name__)
@@ -297,6 +297,13 @@ class FrankaInterface:
             osc_msg = franka_controller_pb2.FrankaOSCPoseControllerMessage()
             osc_msg.translational_stiffness[:] = controller_cfg.Kp.translation
             osc_msg.rotational_stiffness[:] = controller_cfg.Kp.rotation
+            if check_attr(controller_cfg, "Kd"):
+                for axis, field in (
+                    ("translation", osc_msg.translational_damping),
+                    ("rotation", osc_msg.rotational_damping),
+                ):
+                    if check_attr(controller_cfg.Kd, axis):
+                        field[:] = controller_cfg.Kd[axis]
 
             osc_config = franka_controller_pb2.FrankaOSCControllerConfig()
 

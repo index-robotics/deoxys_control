@@ -405,7 +405,6 @@ int main(int argc, char **argv) {
             global_handler->controller_ptr =
                 std::make_shared<controller::OSCImpedanceController>(model);
             global_handler->logger->info("Initialize OSC Pose");
-            global_handler->running = true;
           } else if (control_command.controller_type ==
                          ControllerType::OSC_POSITION &&
                      controller_type == ControllerType::NO_CONTROL) {
@@ -413,35 +412,30 @@ int main(int argc, char **argv) {
                 std::make_shared<controller::OSCPositionImpedanceController>(
                     model);
             global_handler->logger->info("Initialize OSC Position");
-            global_handler->running = true;
           } else if (control_command.controller_type ==
                          ControllerType::OSC_YAW &&
                      controller_type == ControllerType::NO_CONTROL) {
             global_handler->controller_ptr =
                 std::make_shared<controller::OSCYawImpedanceController>(model);
             global_handler->logger->info("Initialize OSC Yaw");
-            global_handler->running = true;
           } else if (control_command.controller_type ==
                          ControllerType::JOINT_POSITION &&
                      controller_type == ControllerType::NO_CONTROL) {
             global_handler->controller_ptr =
                 std::make_shared<controller::JointPositionController>(model);
             global_handler->logger->info("Initialize Joint Position");
-            global_handler->running = true;
           } else if (control_command.controller_type ==
                          ControllerType::JOINT_IMPEDANCE &&
                      controller_type == ControllerType::NO_CONTROL) {
             global_handler->controller_ptr =
                 std::make_shared<controller::JointImpedanceController>(model);
             global_handler->logger->info("Initialize Joint Impedance");
-            global_handler->running = true;
           } else if (control_command.controller_type ==
                          ControllerType::CARTESIAN_VELOCITY &&
                      controller_type == ControllerType::NO_CONTROL) {
             global_handler->controller_ptr =
                 std::make_shared<controller::CartesianVelocityController>(model);
             global_handler->logger->info("Initialize Cartesian Velocity");
-            global_handler->running = true;            
           } else if (control_command.controller_type ==
                          ControllerType::NO_CONTROL ||
                      controller_type == ControllerType::NO_CONTROL) {
@@ -459,6 +453,15 @@ int main(int argc, char **argv) {
               global_handler->logger->info("Initialize State Estimator");
             }
             state_estimator_type = control_command.state_estimator_type;
+          }
+
+          // A rejected message is dropped whole: its interpolator is never
+          // swapped in, its goal never applied, and a session whose first
+          // message is rejected never starts.
+          if (!global_handler->controller_ptr->ParseMessage(control_msg)) {
+            global_handler->logger->error(
+                "Rejected control message (unpack failed or invalid gains)");
+            continue;
           }
 
           global_handler->start = true;
@@ -515,8 +518,6 @@ int main(int argc, char **argv) {
             traj_interpolator_type = control_command.traj_interpolator_type;
           }
 
-          global_handler->controller_ptr->ParseMessage(control_msg);
-
           global_handler->controller_ptr->ComputeGoal(current_state_info,
                                                       goal_state_info);
           switch (control_command.traj_interpolator_type) {
@@ -563,6 +564,12 @@ int main(int argc, char **argv) {
             break;
           default:
             break;
+          }
+          // Only now: the main loop starts the controller on `running`, and
+          // must not before gains, goal and interpolator are set. A
+          // termination message cleared it above; keep it cleared.
+          if (!global_handler->termination) {
+            global_handler->running = true;
           }
         } else {
           global_handler->no_msg_counter++;

@@ -1,5 +1,6 @@
 import argparse
 import logging
+import math
 import os
 import pprint
 # from asyncore import file_dispatcher
@@ -126,6 +127,16 @@ def _fill_defaults(cfg, key, defaults: dict):
     return cfg[key]
 
 
+def _osc_damping(kd, axis) -> list:
+    """Kd.<axis> as 3 finite, non-negative floats; negative damping injects energy."""
+    kd = [float(kd)] * 3 if isinstance(kd, (int, float)) else [float(k) for k in kd]
+    if len(kd) != 3 or not all(math.isfinite(k) and k >= 0 for k in kd):
+        raise ValueError(
+            f"Kd.{axis} must be a non-negative finite scalar or 3 values, got {kd}"
+        )
+    return kd
+
+
 def verify_controller_config(controller_cfg: dict, use_default=True):
     """Verify if the controller configuration has defined all necessary configs.
 
@@ -154,7 +165,7 @@ def verify_controller_config(controller_cfg: dict, use_default=True):
                 controller_cfg["Kp"]["translation"] = [150.0] * 3
                 logger.warning("translation stiffness is not specified!!!")
                 field_missing = True
-            elif type(controller_cfg["Kp"]["translation"]) is float:
+            elif isinstance(controller_cfg["Kp"]["translation"], (int, float)):
                 controller_cfg["Kp"]["translation"] = [
                     controller_cfg["Kp"]["translation"]
                 ] * 3
@@ -162,12 +173,23 @@ def verify_controller_config(controller_cfg: dict, use_default=True):
                 controller_cfg["Kp"]["rotation"] = [250.0] * 3
                 logger.warning("rotational stiffness is not specified!!!")
                 field_missing = True
-            elif type(controller_cfg["Kp"]["rotation"]) is float:
+            elif isinstance(controller_cfg["Kp"]["rotation"], (int, float)):
                 controller_cfg["Kp"]["rotation"] = [
                     controller_cfg["Kp"]["rotation"]
                 ] * 3
         assert len(controller_cfg["Kp"]["translation"]) == 3
         assert len(controller_cfg["Kp"]["rotation"]) == 3
+        # Optional Kd override; absent axes default server-side to 2*sqrt(Kp).
+        if check_attr(controller_cfg, "Kd"):
+            if controller_cfg["controller_type"] != "OSC_POSE":
+                logger.warning(
+                    f"Kd is only applied by OSC_POSE; ignored for {controller_cfg['controller_type']}"
+                )
+            for axis in ("translation", "rotation"):
+                if check_attr(controller_cfg["Kd"], axis):
+                    controller_cfg["Kd"][axis] = _osc_damping(
+                        controller_cfg["Kd"][axis], axis
+                    )
         # Trajectory interpolation
         if not check_attr(controller_cfg, "traj_interpolator_cfg"):
             controller_cfg["traj_interpolator_cfg"] = {
