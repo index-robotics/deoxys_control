@@ -311,6 +311,8 @@ class FrankaInterface:
                 ):
                     if check_attr(controller_cfg.deadband, axis):
                         field[:] = [controller_cfg.deadband[axis]]
+            if check_attr(controller_cfg, "full_task_inertia"):
+                osc_msg.full_task_inertia = bool(controller_cfg.full_task_inertia)
 
             osc_config = franka_controller_pb2.FrankaOSCControllerConfig()
 

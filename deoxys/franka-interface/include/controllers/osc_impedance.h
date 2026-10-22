@@ -37,6 +37,9 @@ protected:
   // sin(theta/2)). Defaults are the historical values; the message can override.
   std::atomic<double> pos_deadband_{1e-4};
   std::atomic<double> ori_deadband_{5e-3};
+  // Full 6x6 task inertia instead of the decoupled translation/rotation blocks
+  // (see OscTaskTorque). Off => the original law.
+  std::atomic<bool> full_task_inertia_{false};
 
 public:
   OSCImpedanceController();

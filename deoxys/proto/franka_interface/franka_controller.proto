@@ -114,6 +114,9 @@ message FrankaOSCPoseControllerMessage {
   // part, ~0.57 deg): error components below these get no stiffness.
   repeated double translational_deadband = 9;
   repeated double rotational_deadband = 10;
+  // Full 6x6 task inertia (keeps the translation/rotation cross terms); false
+  // keeps the decoupled blocks.
+  bool full_task_inertia = 11;
 }
 
 message FrankaJointPositionControllerMessage {
