@@ -3,6 +3,7 @@
 #include <Eigen/Core>
 #include <Eigen/Dense>
 #include <algorithm>
+#include <array>
 #include <iostream>
 
 #ifndef DEOXYS_FRANKA_INTERFACE_INCLUDE_UTILS_CONTROL_UTILS_H_
@@ -73,6 +74,27 @@ inline void TorqueSafetyGuardFn(std::array<double, 7> &tau_d_array,
     } else if (tau_d_array[i] > max_torque[i]) {
       tau_d_array[i] = max_torque[i];
     }
+  }
+}
+
+// Scale tau by one factor so every joint is within [min, max]. Clipping joints one
+// by one changes the torque direction, which breaks the coordination a
+// task-space law (OSC's J^T Lambda a) relies on: with a full task inertia, a
+// saturated pitch then pushes the EE sideways and the loop grows into a limit
+// cycle. Scaling keeps the direction and only under-delivers the acceleration.
+inline void TorqueScaleToLimits(std::array<double, 7> &tau_d_array,
+                                const std::array<double, 7> &min_torque,
+                                const std::array<double, 7> &max_torque) {
+  double scale = 1.0;
+  for (size_t i = 0; i < tau_d_array.size(); i++) {
+    if (tau_d_array[i] > max_torque[i] && max_torque[i] > 0.) {
+      scale = std::min(scale, max_torque[i] / tau_d_array[i]);
+    } else if (tau_d_array[i] < min_torque[i] && min_torque[i] < 0.) {
+      scale = std::min(scale, min_torque[i] / tau_d_array[i]);
+    }
+  }
+  for (double &tau : tau_d_array) {
+    tau *= scale;
   }
 }
 

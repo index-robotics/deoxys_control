@@ -278,6 +278,11 @@ int main(int argc, char **argv) {
         ParseTorqueLimit(control_config["CONTROL"]["SAFETY"]["MAX_TORQUE"]);
     global_handler->min_torque =
         ParseTorqueLimit(control_config["CONTROL"]["SAFETY"]["MIN_TORQUE"]);
+    if (control_config["CONTROL"]["SAFETY"]["SCALE_CARTESIAN_TORQUE"]) {
+      global_handler->scale_cartesian_torque =
+          control_config["CONTROL"]["SAFETY"]["SCALE_CARTESIAN_TORQUE"]
+              .as<bool>();
+    }
 
     // Read speed limits from the global config
     global_handler->max_trans_speed =

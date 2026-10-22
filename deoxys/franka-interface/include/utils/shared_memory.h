@@ -26,6 +26,9 @@ struct SharedMemory {
   // callback, so a plain array (not atomic) is safe.
   std::array<double, 7> max_torque{};
   std::array<double, 7> min_torque{};
+  // Cartesian controllers: scale the whole torque vector into the limits
+  // instead of clipping joints one by one (see TorqueScaleToLimits).
+  bool scale_cartesian_torque = false;
 
   // for velocity control
   std::atomic<double> max_trans_speed;
