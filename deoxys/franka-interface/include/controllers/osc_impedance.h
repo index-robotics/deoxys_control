@@ -33,6 +33,10 @@ protected:
   std::atomic<double> ff_vel_scale_{0.};
   std::atomic<double> ff_acc_scale_{0.};
 
+  // Full 6x6 task inertia instead of the decoupled translation/rotation blocks
+  // (see OscTaskTorque). Off => the original law.
+  std::atomic<bool> full_task_inertia_{false};
+
 public:
   OSCImpedanceController();
   OSCImpedanceController(franka::Model &model);

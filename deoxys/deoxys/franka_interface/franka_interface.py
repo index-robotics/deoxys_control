@@ -304,6 +304,8 @@ class FrankaInterface:
                 ):
                     if check_attr(controller_cfg.Kd, axis):
                         field[:] = controller_cfg.Kd[axis]
+            if check_attr(controller_cfg, "full_task_inertia"):
+                osc_msg.full_task_inertia = bool(controller_cfg.full_task_inertia)
 
             osc_config = franka_controller_pb2.FrankaOSCControllerConfig()
 

@@ -21,6 +21,7 @@
 #include "utils/robot_utils.h"
 
 #include "controllers/osc_impedance.h"
+#include "controllers/osc_task_torque.h"
 
 #include <memory>
 
@@ -135,6 +136,7 @@ bool OSCImpedanceController::ParseMessage(const FrankaControlMessage &msg) {
   ff_vel_scale_.store(ff_vel_scale);
   ff_acc_scale_.store(ff_acc_scale);
   ff_enable_.store(ff_enable);
+  full_task_inertia_.store(control_msg_.full_task_inertia());
 
   this->state_estimator_ptr_->ParseMessage(msg.state_estimator_msg());
 
@@ -310,24 +312,36 @@ std::array<double, 7> OSCImpedanceController::Step(
   ori_error =
       ori_error.unaryExpr([](double x) { return (abs(x) < 5e-3) ? 0. : x; });
 
-  tau_d << jacobian_pos.transpose() *
-                   (Lambda_pos *
-                    (Kp_p * pos_error - Kd_p * (jacobian_pos * current_dq))) +
+  if (full_task_inertia_.load()) {
+    Eigen::Vector3d a_p = Kp_p * pos_error - Kd_p * (jacobian_pos * current_dq);
+    Eigen::Vector3d a_r = Kp_r * ori_error - Kd_r * (jacobian_ori * current_dq);
+    if (ff_enable_.load()) {
+      a_p += Kd_p * (ff_vel_scale_.load() * desired_v) +
+             ff_acc_scale_.load() * desired_a;
+      a_r += Kd_r * (ff_vel_scale_.load() * desired_w) +
+             ff_acc_scale_.load() * desired_alpha;
+    }
+    tau_d << OscTaskTorque(jacobian, M_inv, a_p, a_r, true);
+  } else {
+    tau_d << jacobian_pos.transpose() *
+                     (Lambda_pos *
+                      (Kp_p * pos_error - Kd_p * (jacobian_pos * current_dq))) +
+                 jacobian_ori.transpose() *
+                     (Lambda_ori *
+                      (Kp_r * ori_error - Kd_r * (jacobian_ori * current_dq)));
+    if (ff_enable_.load()) {
+      const double ff_vel_scale = ff_vel_scale_.load();
+      const double ff_acc_scale = ff_acc_scale_.load();
+      // Velocity feedforward collapses the cruise lag (damping acts on the twist
+      // error v_d - J dq); Lambda * a_d supplies the acceleration force from the
+      // task-space inertia. Gravity stays libfranka-implicit.
+      tau_d += jacobian_pos.transpose() *
+                   (Lambda_pos * (Kd_p * (ff_vel_scale * desired_v) +
+                                  ff_acc_scale * desired_a)) +
                jacobian_ori.transpose() *
-                   (Lambda_ori *
-                    (Kp_r * ori_error - Kd_r * (jacobian_ori * current_dq)));
-  if (ff_enable_.load()) {
-    const double ff_vel_scale = ff_vel_scale_.load();
-    const double ff_acc_scale = ff_acc_scale_.load();
-    // Velocity feedforward collapses the cruise lag (damping acts on the twist
-    // error v_d - J dq); Lambda * a_d supplies the acceleration force from the
-    // task-space inertia. Gravity stays libfranka-implicit.
-    tau_d += jacobian_pos.transpose() *
-                 (Lambda_pos * (Kd_p * (ff_vel_scale * desired_v) +
-                                ff_acc_scale * desired_a)) +
-             jacobian_ori.transpose() *
-                 (Lambda_ori * (Kd_r * (ff_vel_scale * desired_w) +
-                                ff_acc_scale * desired_alpha));
+                   (Lambda_ori * (Kd_r * (ff_vel_scale * desired_w) +
+                                  ff_acc_scale * desired_alpha));
+    }
   }
 
   // nullspace control
