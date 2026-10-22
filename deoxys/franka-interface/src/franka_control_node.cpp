@@ -601,17 +601,21 @@ int main(int argc, char **argv) {
         if (controller_type == ControllerType::OSC_POSE ||
             controller_type == ControllerType::OSC_POSITION ||
             controller_type == ControllerType::OSC_YAW) {
-          // OSC control callback
+          // OSC control callback. limit_rate: libfranka limits the low-passed
+          // torque, the one actually sent (see torque_callback.h).
           robot.control(
               control_callbacks::CreateTorqueFromCartesianSpaceCallback(
                   global_handler, state_publisher, model, current_state_info,
-                  goal_state_info, policy_rate, traj_rate));
+                  goal_state_info, policy_rate, traj_rate),
+              /*limit_rate=*/true);
         } else if (controller_type == ControllerType::JOINT_IMPEDANCE) {
           // Joint Impedance control callback
           global_handler->logger->info("Joint impedance callback");
           robot.control(control_callbacks::CreateTorqueFromJointSpaceCallback(
-              global_handler, state_publisher, model, current_state_info,
-              goal_state_info, policy_rate, traj_rate));
+                            global_handler, state_publisher, model,
+                            current_state_info, goal_state_info, policy_rate,
+                            traj_rate),
+                        /*limit_rate=*/true);
         } else if (controller_type == ControllerType::JOINT_POSITION) {
           // Joint Position control callback
           global_handler->logger->info("Joint position callback");
