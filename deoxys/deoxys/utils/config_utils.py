@@ -137,6 +137,14 @@ def _osc_damping(kd, axis) -> list:
     return kd
 
 
+def _osc_deadband(value, axis) -> float:
+    """deadband.<axis> as one finite, non-negative float."""
+    value = float(value)
+    if not (math.isfinite(value) and value >= 0):
+        raise ValueError(f"deadband.{axis} must be a non-negative finite scalar, got {value}")
+    return value
+
+
 def verify_controller_config(controller_cfg: dict, use_default=True):
     """Verify if the controller configuration has defined all necessary configs.
 
@@ -189,6 +197,17 @@ def verify_controller_config(controller_cfg: dict, use_default=True):
                 if check_attr(controller_cfg["Kd"], axis):
                     controller_cfg["Kd"][axis] = _osc_damping(
                         controller_cfg["Kd"][axis], axis
+                    )
+        # Optional error deadband; absent axes keep the server's 1e-4 / 5e-3.
+        if check_attr(controller_cfg, "deadband"):
+            if controller_cfg["controller_type"] != "OSC_POSE":
+                logger.warning(
+                    f"deadband is only applied by OSC_POSE; ignored for {controller_cfg['controller_type']}"
+                )
+            for axis in ("translation", "rotation"):
+                if check_attr(controller_cfg["deadband"], axis):
+                    controller_cfg["deadband"][axis] = _osc_deadband(
+                        controller_cfg["deadband"][axis], axis
                     )
         # Trajectory interpolation
         if not check_attr(controller_cfg, "traj_interpolator_cfg"):

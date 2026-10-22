@@ -51,12 +51,23 @@ bool OSCImpedanceController::ParseMessage(const FrankaControlMessage &msg) {
     }
     return true;
   };
+  auto valid_deadband = [](const google::protobuf::RepeatedField<double> &d) {
+    return d.empty() || (d.size() == 1 && std::isfinite(d[0]) && d[0] >= 0.0);
+  };
   if (!valid_gains(control_msg_.translational_stiffness(), false) ||
       !valid_gains(control_msg_.rotational_stiffness(), false) ||
       !valid_gains(control_msg_.translational_damping(), true) ||
-      !valid_gains(control_msg_.rotational_damping(), true)) {
+      !valid_gains(control_msg_.rotational_damping(), true) ||
+      !valid_deadband(control_msg_.translational_deadband()) ||
+      !valid_deadband(control_msg_.rotational_deadband())) {
     return false;
   }
+  pos_deadband_.store(control_msg_.translational_deadband().empty()
+                          ? 1e-4
+                          : control_msg_.translational_deadband(0));
+  ori_deadband_.store(control_msg_.rotational_deadband().empty()
+                          ? 5e-3
+                          : control_msg_.rotational_deadband(0));
   Kp_p.diagonal() = Eigen::Map<const Eigen::Vector3d>(
       control_msg_.translational_stiffness().data());
   Kp_r.diagonal() = Eigen::Map<const Eigen::Vector3d>(
@@ -305,10 +316,12 @@ std::array<double, 7> OSCImpedanceController::Step(
   control_utils::PInverse(Lambda_pos_inv, Lambda_pos);
   control_utils::PInverse(Lambda_ori_inv, Lambda_ori);
 
-  pos_error =
-      pos_error.unaryExpr([](double x) { return (abs(x) < 1e-4) ? 0. : x; });
-  ori_error =
-      ori_error.unaryExpr([](double x) { return (abs(x) < 5e-3) ? 0. : x; });
+  const double pos_deadband = pos_deadband_.load();
+  const double ori_deadband = ori_deadband_.load();
+  pos_error = pos_error.unaryExpr(
+      [pos_deadband](double x) { return (std::abs(x) < pos_deadband) ? 0. : x; });
+  ori_error = ori_error.unaryExpr(
+      [ori_deadband](double x) { return (std::abs(x) < ori_deadband) ? 0. : x; });
 
   tau_d << jacobian_pos.transpose() *
                    (Lambda_pos *
