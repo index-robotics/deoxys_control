@@ -78,6 +78,10 @@ CreateTorqueFromCartesianSpaceCallback(
         robot_state, desired_pos_EE_in_base_frame,
         desired_quat_EE_in_base_frame, desired_v, desired_w, desired_a,
         desired_alpha);
+    if (global_handler->scale_cartesian_torque) {
+      control_utils::TorqueScaleToLimits(tau_d_array, global_handler->min_torque,
+                                         global_handler->max_torque);
+    }
 
     std::array<double, 7> tau_d_rate_limited = franka::limitRate(
         franka::kMaxTorqueRate, tau_d_array, robot_state.tau_J_d);
