@@ -33,6 +33,11 @@ protected:
   std::atomic<double> ff_vel_scale_{0.};
   std::atomic<double> ff_acc_scale_{0.};
 
+  // Error components below these are zeroed (m; quaternion vector part, i.e.
+  // sin(theta/2)). Defaults are the historical values; the message can override.
+  std::atomic<double> pos_deadband_{1e-4};
+  std::atomic<double> ori_deadband_{5e-3};
+
 public:
   OSCImpedanceController();
   OSCImpedanceController(franka::Model &model);
