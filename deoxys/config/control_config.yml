@@ -1,7 +1,7 @@
 CONTROL:
         SAFETY:
                 # Per-joint torque limits (joints 1-7), in Nm. Applied every tick
-                # after franka::limitRate in the torque callback shared by ALL
+                # (before libfranka's low-pass and rate limit) in the torque callback shared by ALL
                 # controllers, so this bounds JOINT_IMPEDANCE *and* the OSC_* paths
                 # (OSC_POSE/POSITION/YAW) alike -- it is a fleet-wide clamp, not a
                 # feedforward-only one. Excludes gravity (libfranka adds it), so cap +

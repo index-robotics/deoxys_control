@@ -79,17 +79,17 @@ CreateTorqueFromCartesianSpaceCallback(
         desired_quat_EE_in_base_frame, desired_v, desired_w, desired_a,
         desired_alpha);
 
-    std::array<double, 7> tau_d_rate_limited = franka::limitRate(
-        franka::kMaxTorqueRate, tau_d_array, robot_state.tau_J_d);
-    control_utils::TorqueSafetyGuardFn(tau_d_rate_limited,
-                                       global_handler->min_torque,
+    // No rate limit here: robot.control(..., limit_rate=true) applies it after
+    // libfranka's low-pass. Limiting before the filter against the filtered
+    // tau_J_d capped the slew at gain * kMaxTorqueRate (~386 Nm/s at 100 Hz).
+    control_utils::TorqueSafetyGuardFn(tau_d_array, global_handler->min_torque,
                                        global_handler->max_torque);
     std::chrono::high_resolution_clock::time_point t2 =
         std::chrono::high_resolution_clock::now();
     auto time = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1);
     // global_handler->logger->debug("{0} microseconds" , time.count());
 
-    return tau_d_rate_limited;
+    return tau_d_array;
   };
 }
 
@@ -148,17 +148,17 @@ CreateTorqueFromJointSpaceCallback(
     tau_d_array = global_handler->controller_ptr->Step(
         robot_state, desired_q, desired_dq, desired_ddq);
 
-    std::array<double, 7> tau_d_rate_limited = franka::limitRate(
-        franka::kMaxTorqueRate, tau_d_array, robot_state.tau_J_d);
-    control_utils::TorqueSafetyGuardFn(tau_d_rate_limited,
-                                       global_handler->min_torque,
+    // No rate limit here: robot.control(..., limit_rate=true) applies it after
+    // libfranka's low-pass. Limiting before the filter against the filtered
+    // tau_J_d capped the slew at gain * kMaxTorqueRate (~386 Nm/s at 100 Hz).
+    control_utils::TorqueSafetyGuardFn(tau_d_array, global_handler->min_torque,
                                        global_handler->max_torque);
     std::chrono::high_resolution_clock::time_point t2 =
         std::chrono::high_resolution_clock::now();
     auto time = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1);
     // global_handler->logger->debug("{0} microseconds" , time.count());
 
-    return tau_d_rate_limited;
+    return tau_d_array;
   };
 }
 
