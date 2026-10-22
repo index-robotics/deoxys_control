@@ -2,6 +2,7 @@
 
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <iostream>
 #include <mutex>
 #include <sstream>
@@ -344,22 +345,46 @@ int main(int argc, char **argv) {
 
     // control message subscription thread
     std::thread control_msg_sub([&]() {
+      // Poll every 1 ms, not once per policy tick: sleeping 1/policy_rate before
+      // a conflated recv held each command 0..1/policy_rate (drifting with the
+      // sender's clock) and dropped or stalled a tick where the clocks crossed.
+      // The watchdog keeps its old span: 20 policy ticks without a valid message.
+      const auto no_msg_timeout =
+          std::chrono::duration<double>(20. / policy_rate);
+      // The interpolators start each segment from the previous goal, so a message
+      // applied before its predecessor's segment (1/policy_rate) ends jumps the
+      // reference by the unfinished part -- a whole step for a burst. Apply none
+      // sooner than 0.8 of a tick after the last; hold the newest until then
+      // (on-cadence messages are never held).
+      const auto min_msg_spacing =
+          std::chrono::duration<double>(0.8 / policy_rate);
+      auto last_valid_msg = std::chrono::steady_clock::now();
+      std::chrono::steady_clock::time_point last_applied_msg{};
+      std::string pending;
       while (!global_handler->termination) {
-        std::this_thread::sleep_for(
-            std::chrono::milliseconds(int(1. / policy_rate * 1000.)));
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
 
-        // Receive message
-        std::string msg;
-        msg = zmq_sub.recv(zmq_noblock);
+        // Receive message; the newest wins while one is held.
+        std::string received = zmq_sub.recv(zmq_noblock);
+        if (!received.empty()) {
+          pending = std::move(received);
+        }
+        if (!pending.empty() &&
+            std::chrono::steady_clock::now() - last_applied_msg <
+                min_msg_spacing) {
+          continue;
+        }
+        std::string msg = std::move(pending);
+        pending.clear();
         if (msg.length() == 0) {
-          global_handler->no_msg_counter += int(global_handler->start);
-          global_handler->logger->debug("Counter {0}",
-                                        global_handler->no_msg_counter);
-          if (global_handler->no_msg_counter >= 20) {
+          if (!global_handler->start) {
+            last_valid_msg = std::chrono::steady_clock::now();
+          } else if (std::chrono::steady_clock::now() - last_valid_msg >=
+                     no_msg_timeout) {
             global_handler->running = false;
             global_handler->termination = true;
             global_handler->logger->debug(
-                "No valid messages received in 20 steps");
+                "No valid messages received in 20 policy steps");
           }
           continue;
         }
@@ -367,6 +392,8 @@ int main(int argc, char **argv) {
         FrankaControlMessage control_msg;
 
         if (control_msg.ParseFromString(msg)) {
+          last_valid_msg = std::chrono::steady_clock::now();
+          last_applied_msg = last_valid_msg;
           global_handler->no_msg_counter = 0;
           if (control_msg.termination()) {
             global_handler->running = false;
