@@ -304,6 +304,13 @@ class FrankaInterface:
                 ):
                     if check_attr(controller_cfg.Kd, axis):
                         field[:] = controller_cfg.Kd[axis]
+            if check_attr(controller_cfg, "deadband"):
+                for axis, field in (
+                    ("translation", osc_msg.translational_deadband),
+                    ("rotation", osc_msg.rotational_deadband),
+                ):
+                    if check_attr(controller_cfg.deadband, axis):
+                        field[:] = [controller_cfg.deadband[axis]]
 
             osc_config = franka_controller_pb2.FrankaOSCControllerConfig()
 
