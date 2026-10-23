@@ -6,14 +6,12 @@ CONTROL:
                 # (OSC_POSE/POSITION/YAW) alike -- it is a fleet-wide clamp, not a
                 # feedforward-only one. Excludes gravity (libfranka adds it). 10/5 Nm
                 # (IND-1807) saturated OSC_POSE with feedforward: joint 2 sat at the
-                # clamp ~47% of a 2 Hz, 2 cm sine and ~14% of a teleop session. j2/j4
-                # at 60 Nm: at 30 Nm j2 saturated on a 2 Hz TCP pitch. Caps exclude
-                # gravity, so cap + gravity can pass the FR3 ceilings (87 / 12 Nm):
-                # j2 gravity reaches ~62 Nm arm-outstretched (~20 Nm at the tuning
-                # pose). libfranka's torque reflex is the hardware backstop.
+                # clamp ~47% of a 2 Hz, 2 cm sine and ~14% of a teleop session. 30 Nm
+                # j1-4 / 8 Nm j5-7 stay well inside the FR3 ceilings (87 / 12 Nm),
+                # with libfranka reflexes as the hardware backstop.
                 # A plain scalar is still accepted and broadcast to all 7 joints.
-                MAX_TORQUE: [30, 60, 30, 60, 8, 8, 8]
-                MIN_TORQUE: [-30, -60, -30, -60, -8, -8, -8]
+                MAX_TORQUE: [30, 30, 30, 30, 8, 8, 8]
+                MIN_TORQUE: [-30, -30, -30, -30, -8, -8, -8]
                 MAX_TRANS_SPEED: 0.1
                 MIN_TRANS_SPEED: -0.1
                 MAX_ROT_SPEED: 0.1
