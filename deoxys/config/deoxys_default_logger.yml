@@ -1,4 +1,17 @@
 version: 1
+# Do NOT disable loggers that already exist when this config is applied.
+#
+# dictConfig defaults this to True, and deoxys/__init__.py applies this config at
+# IMPORT time — so ``import deoxys`` was setting .disabled = True on every logger any
+# importing application had already created. For an application that imports deoxys as
+# a library (rather than running deoxys's own scripts) that silently kills its logging:
+# downstream this silenced curobo and motion-dispatcher logs on the robot, and made a
+# caplog-based test fail in an unrelated module, because caplog.at_level() restores
+# levels but never clears .disabled.
+#
+# A library configuring logging at import is already impolite; doing it destructively
+# is a bug. See index-robotics/mechacarpal IND-1878.
+disable_existing_loggers: false
 formatters:
   simple:
     format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
