@@ -317,7 +317,7 @@ int main(int argc, char **argv) {
       return zero_torques;
     };
 
-    robot.control(osc_control_callback);
+    robot.control(osc_control_callback, /*limit_rate=*/true);
 
   } catch (franka::Exception const &e) {
     std::cout << e.what() << std::endl;

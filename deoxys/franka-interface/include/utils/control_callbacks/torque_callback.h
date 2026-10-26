@@ -14,6 +14,18 @@
 
 namespace control_callbacks {
 
+// Every torque controller runs through here. libfranka 0.20.5 low-passes the
+// torque, then rate-limits it against tau_J_d only if limit_rate (default
+// false). The callbacks don't limit themselves: limiting before the filter
+// against the filtered tau_J_d capped the slew at gain * kMaxTorqueRate
+// (~386 Nm/s at 100 Hz).
+inline void ControlTorque(
+    franka::Robot &robot,
+    std::function<franka::Torques(const franka::RobotState &, franka::Duration)>
+        callback) {
+  robot.control(callback, /*limit_rate=*/true);
+}
+
 std::function<franka::Torques(const franka::RobotState &, franka::Duration)>
 CreateTorqueFromCartesianSpaceCallback(
     const std::shared_ptr<SharedMemory> &global_handler,
@@ -79,9 +91,7 @@ CreateTorqueFromCartesianSpaceCallback(
         desired_quat_EE_in_base_frame, desired_v, desired_w, desired_a,
         desired_alpha);
 
-    // No rate limit here: robot.control(..., limit_rate=true) applies it after
-    // libfranka's low-pass. Limiting before the filter against the filtered
-    // tau_J_d capped the slew at gain * kMaxTorqueRate (~386 Nm/s at 100 Hz).
+    // Rate-limited by ControlTorque, after libfranka's low-pass.
     control_utils::TorqueSafetyGuardFn(tau_d_array, global_handler->min_torque,
                                        global_handler->max_torque);
     std::chrono::high_resolution_clock::time_point t2 =
@@ -148,9 +158,7 @@ CreateTorqueFromJointSpaceCallback(
     tau_d_array = global_handler->controller_ptr->Step(
         robot_state, desired_q, desired_dq, desired_ddq);
 
-    // No rate limit here: robot.control(..., limit_rate=true) applies it after
-    // libfranka's low-pass. Limiting before the filter against the filtered
-    // tau_J_d capped the slew at gain * kMaxTorqueRate (~386 Nm/s at 100 Hz).
+    // Rate-limited by ControlTorque, after libfranka's low-pass.
     control_utils::TorqueSafetyGuardFn(tau_d_array, global_handler->min_torque,
                                        global_handler->max_torque);
     std::chrono::high_resolution_clock::time_point t2 =
