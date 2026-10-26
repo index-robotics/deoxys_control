@@ -132,7 +132,8 @@ public:
   };
 
   // Feedforward-aware step: lerp (not ZOH) on the same throttled t, so per-ms
-  // torque changes stay small instead of staircasing through limitRate.
+  // torque changes stay small instead of staircasing through libfranka's
+  // post-filter rate limit (1 Nm/ms).
   inline void GetNextStep(const double &time_sec, Eigen::Vector3d &p_t,
                           Eigen::Quaterniond &q_t, Eigen::Vector3d &v_t,
                           Eigen::Vector3d &w_t, Eigen::Vector3d &a_t,

@@ -117,7 +117,8 @@ public:
 
   // Feedforward-aware step: lerp all three channels on the same throttled t.
   // Lerp (not ZOH) keeps per-ms Kd*dq_d changes ~0.15 Nm instead of 6-8 Nm
-  // steps that limitRate would smear into a torque staircase.
+  // steps that libfranka's post-filter rate limit (1 Nm/ms) would turn into a
+  // torque staircase.
   inline void GetNextStep(const double &time_sec, Vector7d &q_t, Vector7d &dq_t,
                           Vector7d &ddq_t) {
     if (!start_) {

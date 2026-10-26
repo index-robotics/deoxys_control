@@ -622,28 +622,40 @@ int main(int argc, char **argv) {
               controller_type == ControllerType::OSC_POSITION ||
               controller_type == ControllerType::OSC_YAW) {
             // OSC control callback
-            robot.control(
+            control_callbacks::ControlTorque(
+                robot,
                 control_callbacks::CreateTorqueFromCartesianSpaceCallback(
                     global_handler, state_publisher, model, current_state_info,
                     goal_state_info, policy_rate, traj_rate));
           } else if (controller_type == ControllerType::JOINT_IMPEDANCE) {
             // Joint Impedance control callback
             global_handler->logger->info("Joint impedance callback");
-            robot.control(control_callbacks::CreateTorqueFromJointSpaceCallback(
-                global_handler, state_publisher, model, current_state_info,
-                goal_state_info, policy_rate, traj_rate));
+            control_callbacks::ControlTorque(
+                robot, control_callbacks::CreateTorqueFromJointSpaceCallback(
+                           global_handler, state_publisher, model,
+                           current_state_info, goal_state_info, policy_rate,
+                           traj_rate));
           } else if (controller_type == ControllerType::JOINT_POSITION) {
             // Joint Position control callback
             global_handler->logger->info("Joint position callback");
+            // limit_rate explicit: false is 0.20.5's default (the fleet's
+            // validated behavior); 0.13.3 defaults to true.
             robot.control(control_callbacks::CreateJointPositionCallback(
-                global_handler, state_publisher, model, current_state_info,
-                goal_state_info, policy_rate, traj_rate));
+                              global_handler, state_publisher, model,
+                              current_state_info, goal_state_info, policy_rate,
+                              traj_rate),
+                          franka::ControllerMode::kJointImpedance,
+                          /*limit_rate=*/false);
           } else if (controller_type == ControllerType::CARTESIAN_VELOCITY) {
             // Cartesian Velocity control callback
             global_handler->logger->info("Cartesian velocity callback");
+            // limit_rate explicit, as for JOINT_POSITION.
             robot.control(control_callbacks::CreateCartesianVelocitiesCallback(
-                global_handler, state_publisher, model, current_state_info,
-                goal_state_info, policy_rate, traj_rate));
+                              global_handler, state_publisher, model,
+                              current_state_info, goal_state_info, policy_rate,
+                              traj_rate),
+                          franka::ControllerMode::kJointImpedance,
+                          /*limit_rate=*/false);
           }
         }
         global_handler->time = 0.0;
