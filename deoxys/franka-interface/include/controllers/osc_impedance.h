@@ -33,6 +33,17 @@ protected:
   std::atomic<double> ff_vel_scale_{0.};
   std::atomic<double> ff_acc_scale_{0.};
 
+  // Error components below these are zeroed (m; quaternion vector part, i.e.
+  // sin(theta/2)). Defaults are the historical values; the message can override
+  // up to the max (a larger value removes most of the stiffness).
+  static constexpr double kDefaultPosDeadband = 1e-4;
+  static constexpr double kDefaultOriDeadband = 5e-3;
+  static constexpr double kMaxPosDeadband = 1e-2;
+  static constexpr double kMaxOriDeadband = 0.1;
+  std::atomic<double> pos_deadband_{kDefaultPosDeadband};
+  std::atomic<double> ori_deadband_{kDefaultOriDeadband};
+  bool deadband_logged_ = false;
+
 public:
   OSCImpedanceController();
   OSCImpedanceController(franka::Model &model);

@@ -137,6 +137,21 @@ def _osc_damping(kd, axis) -> list:
     return kd
 
 
+# Mirrors kMax*Deadband in osc_impedance.h: m, and quaternion vector part sin(theta/2).
+_OSC_DEADBAND_MAX = {"translation": 1e-2, "rotation": 0.1}
+
+
+def _osc_deadband(value, axis) -> float:
+    """deadband.<axis> as one finite float in [0, max]."""
+    limit = _OSC_DEADBAND_MAX[axis]
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"deadband.{axis} must be a scalar, got {value!r}")
+    value = float(value)
+    if not (math.isfinite(value) and 0 <= value <= limit):
+        raise ValueError(f"deadband.{axis} must be finite and in [0, {limit}], got {value}")
+    return value
+
+
 def verify_controller_config(controller_cfg: dict, use_default=True):
     """Verify if the controller configuration has defined all necessary configs.
 
@@ -189,6 +204,23 @@ def verify_controller_config(controller_cfg: dict, use_default=True):
                 if check_attr(controller_cfg["Kd"], axis):
                     controller_cfg["Kd"][axis] = _osc_damping(
                         controller_cfg["Kd"][axis], axis
+                    )
+        # Optional error deadband; absent axes keep the server's 1e-4 / 5e-3.
+        if check_attr(controller_cfg, "deadband"):
+            # A bare number would be silently skipped below (and the units differ per axis).
+            if not isinstance(controller_cfg["deadband"], dict):
+                raise ValueError(
+                    "deadband must be a mapping with translation and/or rotation, "
+                    f"got {controller_cfg['deadband']!r}"
+                )
+            if controller_cfg["controller_type"] != "OSC_POSE":
+                logger.warning(
+                    f"deadband is only applied by OSC_POSE; ignored for {controller_cfg['controller_type']}"
+                )
+            for axis in ("translation", "rotation"):
+                if check_attr(controller_cfg["deadband"], axis):
+                    controller_cfg["deadband"][axis] = _osc_deadband(
+                        controller_cfg["deadband"][axis], axis
                     )
         # Trajectory interpolation
         if not check_attr(controller_cfg, "traj_interpolator_cfg"):

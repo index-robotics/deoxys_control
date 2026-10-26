@@ -8,6 +8,7 @@
 #include <thread>
 
 #include <Eigen/Dense>
+#include <spdlog/spdlog.h>
 #include <yaml-cpp/yaml.h>
 
 #include <franka/duration.h>
@@ -51,11 +52,34 @@ bool OSCImpedanceController::ParseMessage(const FrankaControlMessage &msg) {
     }
     return true;
   };
+  auto valid_deadband = [](const google::protobuf::RepeatedField<double> &d,
+                           double max) {
+    return d.empty() ||
+           (d.size() == 1 && std::isfinite(d[0]) && d[0] >= 0.0 && d[0] <= max);
+  };
   if (!valid_gains(control_msg_.translational_stiffness(), false) ||
       !valid_gains(control_msg_.rotational_stiffness(), false) ||
       !valid_gains(control_msg_.translational_damping(), true) ||
-      !valid_gains(control_msg_.rotational_damping(), true)) {
+      !valid_gains(control_msg_.rotational_damping(), true) ||
+      !valid_deadband(control_msg_.translational_deadband(), kMaxPosDeadband) ||
+      !valid_deadband(control_msg_.rotational_deadband(), kMaxOriDeadband)) {
     return false;
+  }
+  const double pos_deadband = control_msg_.translational_deadband().empty()
+                                  ? kDefaultPosDeadband
+                                  : control_msg_.translational_deadband(0);
+  const double ori_deadband = control_msg_.rotational_deadband().empty()
+                                  ? kDefaultOriDeadband
+                                  : control_msg_.rotational_deadband(0);
+  // Logged so a binary built without fields 9/10 (which drops them silently)
+  // shows up as the defaults in the arm log.
+  const bool deadband_changed =
+      (pos_deadband_.exchange(pos_deadband) != pos_deadband) |
+      (ori_deadband_.exchange(ori_deadband) != ori_deadband);
+  if (deadband_changed || !deadband_logged_) {
+    spdlog::info("OSC_POSE deadband: translation {} m, rotation {}",
+                 pos_deadband, ori_deadband);
+    deadband_logged_ = true;
   }
   Kp_p.diagonal() = Eigen::Map<const Eigen::Vector3d>(
       control_msg_.translational_stiffness().data());
@@ -305,10 +329,12 @@ std::array<double, 7> OSCImpedanceController::Step(
   control_utils::PInverse(Lambda_pos_inv, Lambda_pos);
   control_utils::PInverse(Lambda_ori_inv, Lambda_ori);
 
-  pos_error =
-      pos_error.unaryExpr([](double x) { return (abs(x) < 1e-4) ? 0. : x; });
-  ori_error =
-      ori_error.unaryExpr([](double x) { return (abs(x) < 5e-3) ? 0. : x; });
+  const double pos_deadband = pos_deadband_.load();
+  const double ori_deadband = ori_deadband_.load();
+  pos_error = pos_error.unaryExpr(
+      [pos_deadband](double x) { return (std::abs(x) < pos_deadband) ? 0. : x; });
+  ori_error = ori_error.unaryExpr(
+      [ori_deadband](double x) { return (std::abs(x) < ori_deadband) ? 0. : x; });
 
   tau_d << jacobian_pos.transpose() *
                    (Lambda_pos *
