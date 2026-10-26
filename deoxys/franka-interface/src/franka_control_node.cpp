@@ -366,6 +366,9 @@ int main(int argc, char **argv) {
       // are never held.
       auto last_valid_msg = std::chrono::steady_clock::now();
       std::chrono::steady_clock::time_point last_applied_msg{};
+      // Type of the last processed message; control_command's copy lags when
+      // its try_lock fails.
+      ControllerType last_msg_type = ControllerType::NO_CONTROL;
       std::string pending;
       while (!global_handler->termination) {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -381,7 +384,7 @@ int main(int argc, char **argv) {
           urgent = peek.ParseFromString(pending) &&
                    (peek.termination() ||
                     (GetControllerType(peek, peek_type) &&
-                     peek_type != control_command.controller_type));
+                     peek_type != last_msg_type));
         }
         const auto min_msg_spacing = std::chrono::duration<double>(
             0.8 * global_handler->traj_interpolator_time_fraction /
@@ -407,6 +410,7 @@ int main(int argc, char **argv) {
         FrankaControlMessage control_msg;
 
         if (control_msg.ParseFromString(msg)) {
+          GetControllerType(control_msg, last_msg_type);
           if (control_msg.termination()) {
             global_handler->running = false;
             global_handler->termination = true;
