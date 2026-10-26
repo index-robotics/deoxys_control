@@ -36,7 +36,6 @@ struct SharedMemory {
   // for trajectory interpolation
   double traj_interpolator_time_fraction = 1.0;
 
-  std::atomic_int no_msg_counter;
   std::atomic_bool start{
       false}; // indicate if a message is received and start controlling
 };

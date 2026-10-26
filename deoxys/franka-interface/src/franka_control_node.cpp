@@ -316,7 +316,7 @@ int main(int argc, char **argv) {
         "noblock receving {3}",
         state_pub_rate, policy_rate, traj_rate, zmq_noblock);
     // A blocking recv never returns once the sender stops, so control_msg_sub
-    // would never see termination and the teardown join would hang.
+    // would never apply a held message or see termination, and the join hangs.
     if (!zmq_noblock) {
       global_handler->logger->error(
           "ZMQ_NOBLOCK: false is not supported; set it to true.");
@@ -358,12 +358,12 @@ int main(int argc, char **argv) {
       const auto no_msg_timeout =
           std::chrono::duration<double>(20. / policy_rate);
       // The interpolators start each segment from the previous goal, so a message
-      // applied before its predecessor's segment (1/policy_rate) ends jumps the
-      // reference by the unfinished part -- a whole step for a burst. Apply none
-      // sooner than 0.8 of a tick after the last; hold the newest until then
-      // (on-cadence messages are never held).
-      const auto min_msg_spacing =
-          std::chrono::duration<double>(0.8 / policy_rate);
+      // applied before its predecessor's segment (time_fraction / policy_rate)
+      // ends jumps the reference by the unfinished part -- a whole step for a
+      // burst. Apply none sooner than 0.8 of a segment after the last and hold
+      // the newest until then: assumes sender jitter under 0.2 of a segment, so
+      // on-cadence messages are not held. Termination and controller switches
+      // are never held.
       auto last_valid_msg = std::chrono::steady_clock::now();
       std::chrono::steady_clock::time_point last_applied_msg{};
       std::string pending;
@@ -372,25 +372,34 @@ int main(int argc, char **argv) {
 
         // Receive message; the newest wins while one is held.
         std::string received = zmq_sub.recv(zmq_noblock);
+        const auto now = std::chrono::steady_clock::now();
+        bool urgent = false;
         if (!received.empty()) {
           pending = std::move(received);
+          FrankaControlMessage peek;
+          ControllerType peek_type;
+          urgent = peek.ParseFromString(pending) &&
+                   (peek.termination() ||
+                    (GetControllerType(peek, peek_type) &&
+                     peek_type != control_command.controller_type));
         }
-        if (!pending.empty() &&
-            std::chrono::steady_clock::now() - last_applied_msg <
-                min_msg_spacing) {
+        const auto min_msg_spacing = std::chrono::duration<double>(
+            0.8 * global_handler->traj_interpolator_time_fraction /
+            policy_rate);
+        if (!pending.empty() && !urgent &&
+            now - last_applied_msg < min_msg_spacing) {
           continue;
         }
         std::string msg = std::move(pending);
         pending.clear();
         if (msg.length() == 0) {
           if (!global_handler->start) {
-            last_valid_msg = std::chrono::steady_clock::now();
-          } else if (std::chrono::steady_clock::now() - last_valid_msg >=
-                     no_msg_timeout) {
+            last_valid_msg = now;
+          } else if (now - last_valid_msg >= no_msg_timeout) {
             global_handler->running = false;
             global_handler->termination = true;
-            global_handler->logger->debug(
-                "No valid messages received in 20 policy steps");
+            global_handler->logger->error(
+                "No valid messages received in 20 policy steps; terminating");
           }
           continue;
         }
@@ -398,9 +407,6 @@ int main(int argc, char **argv) {
         FrankaControlMessage control_msg;
 
         if (control_msg.ParseFromString(msg)) {
-          last_valid_msg = std::chrono::steady_clock::now();
-          last_applied_msg = last_valid_msg;
-          global_handler->no_msg_counter = 0;
           if (control_msg.termination()) {
             global_handler->running = false;
             global_handler->termination = true;
@@ -473,6 +479,7 @@ int main(int argc, char **argv) {
                          ControllerType::NO_CONTROL ||
                      controller_type == ControllerType::NO_CONTROL) {
             global_handler->running = false;
+            last_valid_msg = now;
             continue;
           }
 
@@ -497,6 +504,10 @@ int main(int argc, char **argv) {
             continue;
           }
 
+          // Stamped only once the message is applied: a rejected one neither
+          // feeds the watchdog nor delays the next good one.
+          last_valid_msg = now;
+          last_applied_msg = now;
           global_handler->start = true;
           if (traj_interpolator_type !=
               control_command.traj_interpolator_type) {
@@ -605,9 +616,7 @@ int main(int argc, char **argv) {
             global_handler->running = true;
           }
         } else {
-          global_handler->no_msg_counter++;
-          global_handler->logger->info("Counter {0}",
-                                       global_handler->no_msg_counter);
+          global_handler->logger->warn("Unparseable control message");
         }
       }
     });
