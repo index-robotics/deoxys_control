@@ -111,7 +111,8 @@ message FrankaOSCPoseControllerMessage {
   repeated double translational_damping = 7;
   repeated double rotational_damping = 8;
   // Optional, one value each; empty keeps 1e-4 m / 5e-3 (quaternion vector
-  // part, ~0.57 deg): error components below these get no stiffness.
+  // part, ~0.57 deg): error components below these get no stiffness. Max
+  // 1e-2 m / 0.1; larger values are rejected.
   repeated double translational_deadband = 9;
   repeated double rotational_deadband = 10;
 }

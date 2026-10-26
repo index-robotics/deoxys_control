@@ -271,6 +271,8 @@ int main(int argc, char **argv) {
         std::make_shared<SharedMemory>();
     global_handler->logger = log_utils::get_logger(
         config["ARM_LOGGER"]["CONSOLE"]["LOGGER_NAME"].as<std::string>());
+    // Controllers log through spdlog's default logger.
+    spdlog::set_default_logger(global_handler->logger);
     
     // Read per-joint torque limits from the global config (scalar accepted and
     // broadcast for back-compat).
