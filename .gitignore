@@ -12,7 +12,7 @@ deoxys/build
 deoxys/bin
 deoxys/include
 deoxys/lib
-deoxys/logs
+logs/
 *egg-info
 __pycache__
 data_collection_example
