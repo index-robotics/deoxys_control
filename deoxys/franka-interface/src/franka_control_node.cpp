@@ -642,7 +642,11 @@ int main(int argc, char **argv) {
     // Logged here, where controller_type is in scope.
     try {
       while (!global_handler->termination) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        // Read every pass, engaged or not, so the published state never
+        // freezes while idle. readOnce blocks on the 1 kHz packet, so it
+        // also paces the loop.
+        init_state = robot.readOnce();
+        state_publisher->UpdateNewState(init_state, &model);
         // If controller_type changes, exit robot control loop and reinitialize.
         FrankaControlMessage control_msg;
 
@@ -653,8 +657,6 @@ int main(int argc, char **argv) {
         }
 
         if (global_handler->running) {
-          init_state = robot.readOnce();
-          state_publisher->UpdateNewState(init_state, &model);
           if (controller_type == ControllerType::NO_CONTROL)
             continue;
           // Choose which control callback functions
